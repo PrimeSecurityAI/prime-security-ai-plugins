@@ -1,0 +1,12 @@
+{
+  "name": "prime-security-operator",
+  "version": "1.0.0",
+  "description": "Prime Security API skill for security design reviews, knowledge base policy search, code repository analysis, and AI-assisted security conversations",
+  "author": {
+    "name": "Prime Security"
+  },
+  "repository": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins",
+  "license": "MIT",
+  "keywords": ["security", "security-review", "prime", "compliance", "design-review", "api"],
+  "skills": "./skills/"
+}

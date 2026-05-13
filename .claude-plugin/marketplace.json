@@ -1,0 +1,38 @@
+{
+  "name": "prime",
+  "owner": {
+    "name": "Prime Security",
+    "email": "support@primesec.ai"
+  },
+  "metadata": {
+    "description": "Prime Security tools marketplace — plugins for security reviews, policy search, code analysis, and guardrails"
+  },
+  "plugins": [
+    {
+      "name": "prime-security-operator",
+      "source": "./plugins/prime-security-operator",
+      "description": "Prime Security API skill for security design reviews, knowledge base policy search, code repository analysis, and AI-assisted security conversations",
+      "version": "1.0.0",
+      "author": {
+        "name": "Prime Security"
+      },
+      "keywords": ["security", "security-review", "prime", "compliance", "design-review", "api"],
+      "category": "security",
+      "homepage": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-operator",
+      "license": "MIT"
+    },
+    {
+      "name": "prime-security-dev",
+      "source": "./plugins/prime-security-dev",
+      "description": "Prime Security code guardrails for Claude Code — security policy enforcement via skills and hooks",
+      "version": "1.0.0",
+      "author": {
+        "name": "Prime Security"
+      },
+      "keywords": ["security", "guardrails", "hooks", "code-review", "prime"],
+      "category": "security",
+      "homepage": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-dev",
+      "license": "MIT"
+    }
+  ]
+}

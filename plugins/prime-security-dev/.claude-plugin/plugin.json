@@ -1,0 +1,12 @@
+{
+  "name": "prime-security-dev",
+  "version": "1.0.0",
+  "description": "Prime code guardrails for Claude Code — security policy enforcement via skills and hooks",
+  "author": {
+    "name": "Prime Security"
+  },
+  "repository": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins",
+  "license": "MIT",
+  "keywords": ["security", "guardrails", "hooks", "code-review", "prime"],
+  "skills": "./skills/"
+}

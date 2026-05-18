@@ -63,8 +63,12 @@ Use these schemas when parsing API responses in Steps 1 and 2. Do not assume the
 
 ### Step 1 — Fetch Guardrails
 
+The API paginates results. Fetch **all** instructions by paginating with `start` and `limit` query parameters.
+
+**First request:**
+
 ```
-GET {PRIME_API_URL}/instructions
+GET {PRIME_API_URL}/instructions?limit=5000&start=0
 ```
 
 Required headers:
@@ -72,9 +76,24 @@ Required headers:
 Authorization: Bearer <PRIME_PAT_TOKEN>
 ```
 
-Use the `PRIME_PAT_TOKEN` env var value directly as the Bearer token. No `x-prime-*` headers are required.
+Use the `PRIME_PAT_TOKEN` env var value directly as the Bearer token.
 
-Parse the response according to the schema from Step 0. Treat every instruction returned as a hard constraint when writing code. Do not proceed to write code before this call succeeds.
+**Response structure:**
+
+```json
+{
+  "results": [ ... ],
+  "size": <number of items in this page>,
+  "limit": <page size>,
+  "start": <current offset>,
+  "total": <total items>,
+  "has_next": <boolean>
+}
+```
+
+**Pagination:** Keep incrementing `start` by `limit` until all `total` items are collected.
+
+Parse the response according to the schema from Step 0. Treat every instruction returned as a hard constraint when writing code. Do not proceed to write code before all pages have been fetched.
 
 ### Step 2 — Fetch Repo Summary
 
@@ -86,13 +105,13 @@ This step is best-effort. If the repository is not registered in Prime Security,
 git remote get-url origin
 ```
 
-**b)** List registered repositories:
+**b)** List registered repositories (paginated):
 
 ```
-GET {PRIME_API_URL}/code-management/repositories
+GET {PRIME_API_URL}/code-management/repositories?limit=5000&start=0
 ```
 
-Use the same headers as Step 1. Parse the response according to the schema from Step 0 to extract the list of repository objects.
+Use the same headers as Step 1. Same pagination structure as Step 1 — keep incrementing `start` by `limit` until all `total` repositories are collected. Parse the response according to the schema from Step 0 to extract the list of repository objects.
 
 **c)** Match the current repository against the list by comparing the `repo_url` field with the git remote URL, or the `repo_name` field with the current directory name.
 
@@ -112,6 +131,10 @@ Use the same headers as Step 1.
 
 Apply the guardrails from Step 1 and the repo context from Step 2 while implementing the requested changes. Every security instruction returned in Step 1 must be respected.
 
+### Step 4 — Report Applied Guardrails
+
+After finishing the code changes, output a short summary listing which guardrails were applied and why. For each applied guardrail, include the `instruction_title` and a brief explanation of how it influenced the code.
+
 ## Common Mistakes
 
 | Mistake                                                    | Fix |
@@ -123,6 +146,7 @@ Apply the guardrails from Step 1 and the repo context from Step 2 while implemen
 | Decoding or parsing the PAT token                          | Use the `PRIME_PAT_TOKEN` value exactly as-is in the Authorization header |
 | Assuming all repos have summaries in Prime Security                | The repo lookup may return no match — proceed without a summary in that case |
 | Assuming API responses are bare arrays                     | Always parse responses according to the schemas fetched in Step 0 — responses are paginated objects, not plain arrays |
+| Fetching only the first page of instructions               | Always compare collected items against `total` and paginate until all results are collected — partial guardrails means missed security constraints |
 
 ## Error Handling
 

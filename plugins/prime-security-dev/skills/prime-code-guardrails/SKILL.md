@@ -72,7 +72,7 @@ The API paginates results. Fetch **all** guardrails by paginating with `offset` 
 **First request:**
 
 ```
-GET {PRIME_API_URL}/guardrails?limit=1000&offset=0
+GET {PRIME_API_URL}/guardrails?limit=5000&offset=0
 ```
 
 Required headers:
@@ -116,7 +116,7 @@ git remote get-url origin
 **b)** List registered repositories (paginated):
 
 ```
-GET {PRIME_API_URL}/code-management/repositories?limit=1000&offset=0
+GET {PRIME_API_URL}/code-management/repositories?limit=5000&offset=0
 ```
 
 Use the same headers as Step 1. Same pagination structure as Step 1 — keep incrementing `offset` by `limit` until `has_next` is false or all `total` repositories are collected. Parse the response according to the schema from Step 0 to extract the list of repository objects.

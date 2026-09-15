@@ -25,7 +25,7 @@
       "name": "prime-security-dev",
       "source": "./plugins/prime-security-dev",
       "description": "Prime Security code guardrails for Claude Code — security policy enforcement via skills and hooks",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "Prime Security"
       },

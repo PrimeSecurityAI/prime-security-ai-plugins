@@ -17,7 +17,7 @@ allowed-tools:
 
 # Code Guardrails Skill
 
-Code Guardrails is Prime Security's mechanism for enforcing security policies at code-writing time. Before writing any code, this skill fetches the active security instructions for the account and, where available, a summary of the target repository. Together these provide the constraints and context needed to produce code that conforms to the organization's security posture.
+Code Guardrails is Prime Security's mechanism for enforcing security policies at code-writing time. Before writing any code, this skill fetches the active security guardrails for the account and, where available, a summary of the target repository. Together these provide the constraints and context needed to produce code that conforms to the organization's security posture.
 
 ## Pre-conditions
 
@@ -56,19 +56,19 @@ Complete the pre-conditions first, then run Step 0, Step 1, and Step 2 in parall
 
 Fetch the API documentation so you know the exact response schemas for subsequent steps. Use `WebFetch` to retrieve both pages in parallel:
 
-- `{PRIME_API_URL}/llm/instructions` — documents the response schema for the guardrails endpoint.
+- `{PRIME_API_URL}/llm/guardrails` — documents the response schema for the guardrails endpoint.
 - `{PRIME_API_URL}/llm/code-management` — documents the response schema for the repositories endpoint.
 
 Use these schemas when parsing API responses in Steps 1 and 2. Do not assume the response structure — always rely on the fetched documentation.
 
 ### Step 1 — Fetch Guardrails
 
-The API paginates results. Fetch **all** instructions by paginating with `start` and `limit` query parameters.
+The API paginates results. Fetch **all** guardrails by paginating with `offset` and `limit` query parameters.
 
 **First request:**
 
 ```
-GET {PRIME_API_URL}/instructions?limit=5000&start=0
+GET {PRIME_API_URL}/guardrails?limit=5000&offset=0
 ```
 
 Required headers:
@@ -85,15 +85,15 @@ Use the `PRIME_PAT_TOKEN` env var value directly as the Bearer token.
   "results": [ ... ],
   "size": <number of items in this page>,
   "limit": <page size>,
-  "start": <current offset>,
+  "offset": <current offset>,
   "total": <total items>,
   "has_next": <boolean>
 }
 ```
 
-**Pagination:** Keep incrementing `start` by `limit` until all `total` items are collected.
+**Pagination:** Keep incrementing `offset` by `limit` until all `total` items are collected (or until `has_next` is false).
 
-Parse the response according to the schema from Step 0. Treat every instruction returned as a hard constraint when writing code. Do not proceed to write code before all pages have been fetched.
+Parse the response according to the schema from Step 0. Treat every guardrail returned as a hard constraint when writing code. Do not proceed to write code before all pages have been fetched.
 
 ### Step 2 — Fetch Repo Summary
 
@@ -108,10 +108,10 @@ git remote get-url origin
 **b)** List registered repositories (paginated):
 
 ```
-GET {PRIME_API_URL}/code-management/repositories?limit=5000&start=0
+GET {PRIME_API_URL}/code-management/repositories?limit=5000&offset=0
 ```
 
-Use the same headers as Step 1. Same pagination structure as Step 1 — keep incrementing `start` by `limit` until all `total` repositories are collected. Parse the response according to the schema from Step 0 to extract the list of repository objects.
+Use the same headers as Step 1. Same pagination structure as Step 1 — keep incrementing `offset` by `limit` until all `total` repositories are collected. Parse the response according to the schema from Step 0 to extract the list of repository objects.
 
 **c)** Match the current repository against the list by comparing the `repo_url` field with the git remote URL, or the `repo_name` field with the current directory name.
 
@@ -123,30 +123,30 @@ GET {PRIME_API_URL}/code-management/repositories/{id}?detailed_summary_required=
 
 Use the same headers as Step 1.
 
-**e)** Use the returned summary — architecture overview, component descriptions, and security notes — as additional context when writing code. This context is informational; the instructions from Step 1 remain the authoritative constraints.
+**e)** Read the summary from the `analysis` object of the response: `analysis.concise_summary` (always present) and `analysis.detailed_summary` (populated only because `detailed_summary_required=true` was set in step d — otherwise `null`). Use these — architecture overview, component descriptions, and security notes — as additional context when writing code. This context is informational; the guardrails from Step 1 remain the authoritative constraints.
 
 **f)** If no match is found, proceed without a repo summary. Not all repositories are registered in Prime Security.
 
 ### Step 3 — Write Code
 
-Apply the guardrails from Step 1 and the repo context from Step 2 while implementing the requested changes. Every security instruction returned in Step 1 must be respected.
+Apply the guardrails from Step 1 and the repo context from Step 2 while implementing the requested changes. Every guardrail returned in Step 1 must be respected.
 
 ### Step 4 — Report Applied Guardrails
 
-After finishing the code changes, output a short summary listing which guardrails were applied and why. For each applied guardrail, include the `instruction_title` and a brief explanation of how it influenced the code.
+After finishing the code changes, output a short summary listing which guardrails were applied and why. For each applied guardrail, include the `guardrail_title` and a brief explanation of how it influenced the code.
 
 ## Common Mistakes
 
 | Mistake                                                    | Fix |
 |------------------------------------------------------------|---|
-| Not fetching guardrails before writing code                | Always call `GET /instructions` before writing code |
+| Not fetching guardrails before writing code                | Always call `GET /guardrails` before writing code |
 | Skipping the repo summary lookup                           | Always attempt to match the repo and fetch the detailed summary — skip only when no match is found |
 | Hardcoding endpoint paths instead of using `PRIME_API_URL` | Read all base URLs from the `PRIME_API_URL` env var |
 | Missing `Authorization` header                             | Every request needs `Authorization: Bearer <token>` |
 | Decoding or parsing the PAT token                          | Use the `PRIME_PAT_TOKEN` value exactly as-is in the Authorization header |
 | Assuming all repos have summaries in Prime Security                | The repo lookup may return no match — proceed without a summary in that case |
 | Assuming API responses are bare arrays                     | Always parse responses according to the schemas fetched in Step 0 — responses are paginated objects, not plain arrays |
-| Fetching only the first page of instructions               | Always compare collected items against `total` and paginate until all results are collected — partial guardrails means missed security constraints |
+| Fetching only the first page of guardrails                 | Always paginate with `offset` and compare collected items against `total` until all results are collected — partial guardrails means missed security constraints |
 
 ## Error Handling
 

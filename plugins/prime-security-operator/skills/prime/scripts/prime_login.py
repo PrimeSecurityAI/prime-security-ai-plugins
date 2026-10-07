@@ -65,7 +65,7 @@ def save_token(token: str) -> None:
     # Rename a new file over the old one so readers never see a partial token and an existing looser mode or symlink is never reused.
     tmp = TOKEN_FILE.with_name(f".token.{os.getpid()}")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", newline="\n") as f:
         f.write(token + "\n")
     os.replace(tmp, TOKEN_FILE)
 
@@ -85,7 +85,10 @@ def main() -> int:
     authorize_url = f"{api_url}/oauth/authorize?{urllib.parse.urlencode(params)}"
 
     print(f"Opening the browser to log in to Prime Security. If it does not open, visit:\n{authorize_url}", file=sys.stderr)
-    webbrowser.open(authorize_url)
+    if not webbrowser.open(authorize_url):
+        server.server_close()
+        print("Login failed: no browser could be opened. Create a token under Settings > Access > API Token instead.", file=sys.stderr)
+        return 1
     callback = wait_for_callback(server, state)
     server.server_close()
 

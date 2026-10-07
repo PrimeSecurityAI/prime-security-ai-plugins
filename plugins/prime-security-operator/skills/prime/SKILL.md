@@ -32,7 +32,7 @@ If neither source contains a token, log the user in through the browser before m
 
 1. Apply the base URL checks above, then tell the user that a browser window will open for the Prime Security login.
 2. Run `python3 scripts/prime_login.py` (`py -3` on Windows) from this skill's directory with the same `PRIME_API_URL`. It listens on `127.0.0.1` and opens the browser, so run it outside the command sandbox, requesting escalated permission if the client requires it. The user has up to 5 minutes to approve, so run it in the background or with a command timeout of at least 6 minutes.
-3. Exit code `0` means the token was written to the token file; continue with the request. If the browser did not open, show the user the login URL the script printed while it is still waiting. It contains no credentials.
+3. Exit code `0` means the token was written to the token file; continue with the request. The script exits at once with a failure when no browser can be opened.
 
 The login issues a regular 30-day PAT that appears under **Settings > Access > API Token**.
 

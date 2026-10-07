@@ -6,10 +6,11 @@ Agent Skills and Claude Code plugins for interacting with Prime Security. The po
 
 - Node.js 22.20.0 or later with `npx`
 - Claude Code, Codex, OpenCode, or Cursor
-- A Prime Security account and Personal Access Token (PAT)
+- A Prime Security account
+- `python3` 3.9 or later for the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
 
-Create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**.
+On first use the `prime` skill opens your browser to log in to Prime Security. A Personal Access Token (PAT) is needed only on machines without a browser, and for the `prime-security-dev` plugin.
 
 ## Install The Portable Skill
 
@@ -40,6 +41,8 @@ Restart a client if it does not detect a newly installed, updated, or removed sk
 
 ## Configure Credentials
 
+No setup is needed on a machine with a browser. When no credential is configured, the skill runs its browser login. After you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it.
+
 The skill resolves credentials in this order:
 
 1. `PRIME_PAT_TOKEN`
@@ -47,7 +50,7 @@ The skill resolves credentials in this order:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-Never paste a PAT into an agent chat. To store it without terminal echo or shell history from Bash:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. To store it without terminal echo or shell history from Bash:
 
 ```bash
 config_root="${XDG_CONFIG_HOME:-$HOME/.config}"

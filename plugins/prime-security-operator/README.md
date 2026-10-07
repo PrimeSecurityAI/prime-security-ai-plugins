@@ -6,10 +6,11 @@ The portable `prime` Agent Skill interacts with Prime Security for security desi
 
 - Node.js 22.20.0 or later with `npx`
 - Claude Code, Codex, OpenCode, or Cursor
-- A Prime Security account and PAT
+- A Prime Security account
+- `python3` 3.9 or later for the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
 
-Create a PAT under **Settings > Access > API Token > Create Token** in the Prime Security platform.
+On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser.
 
 ## Install
 
@@ -40,6 +41,8 @@ Restart a client if it does not detect the change.
 
 ## Credentials
 
+When no credential is configured, the skill runs `scripts/prime_login.py`. It opens your browser; after you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it. To log in again, run `python3 <skill-dir>/scripts/prime_login.py` yourself; to log out, delete the token file.
+
 Credential precedence is:
 
 1. `PRIME_PAT_TOKEN`
@@ -47,7 +50,7 @@ Credential precedence is:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-Never paste a PAT into chat. Store it from Bash using hidden input and restrictive permissions:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Store it from Bash using hidden input and restrictive permissions:
 
 ```bash
 config_root="${XDG_CONFIG_HOME:-$HOME/.config}"

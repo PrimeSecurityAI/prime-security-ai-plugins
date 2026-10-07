@@ -1,7 +1,7 @@
 ---
 name: prime
 description: Use when interacting with Prime Security for security design reviews, knowledge base and policy search, repository analysis, code reviews, or AI-assisted security conversations through the Prime API.
-compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses PRIME_PAT_TOKEN or the standard Prime Security token file.
+compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses PRIME_PAT_TOKEN or the standard Prime Security token file. Browser login requires python3 3.9 or later.
 ---
 
 # Prime Security
@@ -28,7 +28,15 @@ Resolve the PAT immediately before an authenticated request, in this order:
 
 Treat the PAT as an opaque string. When reading the token file, remove only its trailing line ending; do not decode or parse the token.
 
-If neither source contains a token, stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
+If neither source contains a token, log the user in through the browser before making an authenticated request:
+
+1. Apply the base URL checks above, then tell the user that a browser window will open for the Prime Security login.
+2. Run `python3 scripts/prime_login.py` from this skill's directory with the same `PRIME_API_URL`. Allow up to 5 minutes for the user to approve.
+3. Exit code `0` means the token was written to the token file; continue with the request. If the browser did not open, show the user the login URL the script printed. It contains no credentials.
+
+The login issues a regular 30-day PAT that appears under **Settings > Access > API Token**.
+
+If the login fails or the machine has no browser (SSH, CI, containers), stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
 
 For a Bash terminal, provide this safe setup example:
 
@@ -73,7 +81,8 @@ Do not infer authentication from another endpoint. Follow the selected endpoint'
 
 ## Error Handling
 
-- `401` or `403`: Report that the credential may be missing, invalid, expired, or insufficient. Direct the user to replace it through their terminal; never request it in chat.
+- `401`: The credential is missing, invalid, expired (browser-login tokens last 30 days), or revoked. If the token came from the token file, run the browser login once and retry. If it came from `PRIME_PAT_TOKEN`, direct the user to replace it through their terminal; never request it in chat.
+- `403`: Report that the credential is not allowed to perform this action.
 - `400` or `422`: Recheck the relevant route-group document and request schema.
 - `404` or `405`: Refetch `/llm.txt`, then the relevant group document, before retrying because the route or method may have changed.
 - `429`: Follow documented retry guidance. Do not invent a polling or retry interval.

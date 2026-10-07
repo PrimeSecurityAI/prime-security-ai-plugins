@@ -28,17 +28,21 @@ TOKEN_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") 
 DONE_PAGE = "<html><body style='font-family:sans-serif;text-align:center;margin-top:20vh'><h2>{}</h2><p>You can close this tab and return to your terminal.</p></body></html>"
 
 
-def wait_for_callback(server: HTTPServer) -> dict:
+def wait_for_callback(server: HTTPServer, state: str) -> dict:
     result = {}
 
     class Handler(BaseHTTPRequestHandler):
+        timeout = 10
+
         def do_GET(self) -> None:
             url = urllib.parse.urlparse(self.path)
-            if url.path != "/callback":
+            params = dict(urllib.parse.parse_qsl(url.query))
+            # Ignore requests without our state so another local process or web page cannot end the login.
+            if url.path != "/callback" or params.get("state") != state:
                 self.send_error(404)
                 return
-            result.update(urllib.parse.parse_qsl(url.query))
-            title = "Login failed" if "error" in result else "Logged in to Prime Security"
+            result.update(params)
+            title = "Login failed" if "error" in result else "Login approved"
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
@@ -57,13 +61,21 @@ def wait_for_callback(server: HTTPServer) -> dict:
 
 def save_token(token: str) -> None:
     TOKEN_FILE.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    TOKEN_FILE.parent.chmod(0o700)
+    # Rename a new file over the old one so readers never see a partial token and an existing looser mode or symlink is never reused.
+    tmp = TOKEN_FILE.with_name(f".token.{os.getpid()}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(token + "\n")
+    os.replace(tmp, TOKEN_FILE)
 
 
 def main() -> int:
     api_url = (os.environ.get("PRIME_API_URL") or "https://api.primesec.ai").rstrip("/")
+    parts = urllib.parse.urlsplit(api_url)
+    if parts.scheme != "https" or not parts.hostname or "@" in parts.netloc or parts.query or parts.fragment:
+        print("Login failed: PRIME_API_URL must be an https URL without user information, a query or a fragment.", file=sys.stderr)
+        return 1
     verifier = secrets.token_urlsafe(64)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     state = secrets.token_urlsafe(32)
@@ -74,14 +86,15 @@ def main() -> int:
 
     print(f"Opening the browser to log in to Prime Security. If it does not open, visit:\n{authorize_url}", file=sys.stderr)
     webbrowser.open(authorize_url)
-    callback = wait_for_callback(server)
+    callback = wait_for_callback(server, state)
     server.server_close()
 
     if not callback:
         print("Login timed out.", file=sys.stderr)
         return 1
-    if callback.get("state") != state:
-        print("Login failed: state mismatch.", file=sys.stderr)
+    # RFC 9207: the response must come from the server we log in to, or the code and verifier could go elsewhere.
+    if callback.get("iss") != api_url:
+        print("Login failed: the response came from an unexpected server.", file=sys.stderr)
         return 1
     if "error" in callback:
         print(f"Login failed: {callback['error']}", file=sys.stderr)
@@ -90,10 +103,13 @@ def main() -> int:
     form = {"grant_type": "authorization_code", "client_id": CLIENT_ID, "code": callback["code"], "redirect_uri": redirect_uri, "code_verifier": verifier}
     request = urllib.request.Request(f"{api_url}/oauth/token", data=urllib.parse.urlencode(form).encode(), headers={"Content-Type": "application/x-www-form-urlencoded"})
     try:
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             token = json.load(response)
     except urllib.error.HTTPError as e:
-        print(f"Login failed: {e.code} {e.read().decode(errors='replace')}", file=sys.stderr)
+        print(f"Login failed: the token request returned HTTP {e.code}.", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as e:
+        print(f"Login failed: the token request did not complete ({e}).", file=sys.stderr)
         return 1
 
     save_token(token["access_token"])

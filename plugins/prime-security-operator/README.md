@@ -41,7 +41,7 @@ Restart a client if it does not detect the change.
 
 ## Credentials
 
-When no credential is configured, the skill runs `scripts/prime_login.py`. It opens your browser; after you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it. To log in again, run `python3 <skill-dir>/scripts/prime_login.py` yourself; to log out, delete the token file.
+When no credential is configured, the skill runs `scripts/prime_login.py`. It opens your browser; after you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it. To log in again, run `python3 <skill-dir>/scripts/prime_login.py` yourself; to log out, revoke the token under **Settings > Access > API Token** and delete the token file.
 
 Credential precedence is:
 

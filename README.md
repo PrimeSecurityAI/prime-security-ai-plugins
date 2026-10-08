@@ -64,6 +64,12 @@ unset prime_pat
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
 
+## MCP Server
+
+Prime also exposes an MCP (Model Context Protocol) server at `https://api.primesec.ai/mcp`. Both Claude Code plugins ship a `.mcp.json` that connects to it with `PRIME_PAT_TOKEN` (and `PRIME_API_URL` when set), so installing a plugin also gives the agent the `prime` MCP tools: `ask_prime`, typed tools for reviews, repositories, code issues, cases, violations, posture and products, plus `list_prime_operations` / `call_prime_operation` for the rest of the public API.
+
+Any other MCP client works too. In Claude (claude.ai) add a custom connector with the URL above and sign in with your Prime account when prompted; for clients that only support a static token, send `Authorization: Bearer <PAT>`.
+
 ## Supported Clients
 
 All clients can select `prime` automatically from a natural-language request.

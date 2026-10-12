@@ -1,7 +1,7 @@
 ---
 name: prime
 description: Use when interacting with Prime Security for security design reviews, knowledge base and policy search, repository analysis, code reviews, or AI-assisted security conversations through the Prime API.
-compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses PRIME_PAT_TOKEN or the standard Prime Security token file.
+compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses PRIME_PAT_TOKEN or the standard Prime Security token file. Browser login requires python3 3.9 or later.
 ---
 
 # Prime Security
@@ -19,7 +19,7 @@ Use the Prime Security API for security reviews, policy search, repository analy
 
 Resolve the API base URL from `PRIME_API_URL`. If it is unset or empty, use `https://api.primesec.ai`.
 
-Before sending credentials, require the base URL to use HTTPS and reject URLs containing user information, a query, or a fragment. If the origin differs from `https://api.primesec.ai`, show the origin and obtain the user's confirmation before the first authenticated request in the session.
+Before sending credentials, require the base URL to use HTTPS and reject URLs containing user information, a query, or a fragment. If the origin differs from `https://api.primesec.ai`, show the origin and obtain the user's confirmation before the browser login or the first authenticated request in the session.
 
 Resolve the PAT immediately before an authenticated request, in this order:
 
@@ -28,7 +28,15 @@ Resolve the PAT immediately before an authenticated request, in this order:
 
 Treat the PAT as an opaque string. When reading the token file, remove only its trailing line ending; do not decode or parse the token.
 
-If neither source contains a token, stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
+If neither source contains a token, log the user in through the browser before making an authenticated request:
+
+1. Apply the base URL checks above, then tell the user that a browser window will open for the Prime Security login.
+2. Run `python3 scripts/prime_login.py` (`py -3` on Windows) from this skill's directory with the same `PRIME_API_URL`. It listens on `127.0.0.1` and opens the browser, so run it outside the command sandbox, requesting escalated permission if the client requires it. The user has up to 5 minutes to approve, so run it in the background or with a command timeout of at least 6 minutes.
+3. Exit code `0` means the token was written to the token file; continue with the request. The script exits at once with a failure when no browser can be opened.
+
+The login issues a regular 30-day PAT that appears under **Settings > Access > API Token**.
+
+If the login fails or the machine has no browser (SSH, CI, containers), stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
 
 For a Bash terminal, provide this safe setup example:
 
@@ -73,7 +81,8 @@ Do not infer authentication from another endpoint. Follow the selected endpoint'
 
 ## Error Handling
 
-- `401` or `403`: Report that the credential may be missing, invalid, expired, or insufficient. Direct the user to replace it through their terminal; never request it in chat.
+- `401`: The credential is missing, invalid, expired (browser-login tokens last 30 days), or revoked. If the token came from the token file and the machine has a browser, run the browser login once and retry. If it came from `PRIME_PAT_TOKEN`, direct the user to replace it through their terminal; never request it in chat.
+- `403`: Report that the credential is not allowed to perform this action.
 - `400` or `422`: Recheck the relevant route-group document and request schema.
 - `404` or `405`: Refetch `/llm.txt`, then the relevant group document, before retrying because the route or method may have changed.
 - `429`: Follow documented retry guidance. Do not invent a polling or retry interval.

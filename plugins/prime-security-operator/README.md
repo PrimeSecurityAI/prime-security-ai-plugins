@@ -6,23 +6,24 @@ The portable `prime` Agent Skill interacts with Prime Security for security desi
 
 - Node.js 22.20.0 or later with `npx`
 - Claude Code, Codex, OpenCode, or Cursor
-- A Prime Security account and PAT
+- A Prime Security account
+- `python3` 3.9 or later for the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
 
-Create a PAT under **Settings > Access > API Token > Create Token** in the Prime Security platform.
+On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The plugin's MCP connection reads a PAT from `PRIME_PAT_TOKEN`; see [MCP Server](#mcp-server).
 
 ## Install
 
 The primary cross-client installation is:
 
 ```bash
-npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-operator/skills/prime --global
+npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global
 ```
 
 Use this command to target all supported clients without prompts:
 
 ```bash
-npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-operator/skills/prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
 ```
 
 Choose one installation path. Do not install both this plain skill and the Claude marketplace plugin in the same client.
@@ -40,6 +41,8 @@ Restart a client if it does not detect the change.
 
 ## Credentials
 
+When no credential is configured, the skill runs `scripts/prime_login.py`. It opens your browser; after you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it. To log in again, run `python3 <skill-dir>/scripts/prime_login.py` yourself; to log out, revoke the token under **Settings > Access > API Token** and delete the token file.
+
 Credential precedence is:
 
 1. `PRIME_PAT_TOKEN`
@@ -47,7 +50,7 @@ Credential precedence is:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-Never paste a PAT into chat. Store it from Bash using hidden input and restrictive permissions:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Store it from Bash using hidden input and restrictive permissions:
 
 ```bash
 config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -77,6 +80,16 @@ Natural-language requests can activate the skill automatically.
 
 The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<group>` documentation, follows each endpoint's authentication contract, and polls only documented asynchronous responses.
 
+## MCP Server
+
+The Claude marketplace plugin also connects Claude Code to the Prime MCP server through `.mcp.json`. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
+
+The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, for example from the token file the browser login writes:
+
+```bash
+export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
+```
+
 ## Pre-Approving Network Access
 
 The skill needs outbound HTTPS access to `*.primesec.*` (or your configured `PRIME_API_URL` host). There is no shared setting for this across clients — each has its own allowlist mechanism, so configure the ones you use:
@@ -89,6 +102,8 @@ The skill needs outbound HTTPS access to `*.primesec.*` (or your configured `PRI
 | Codex CLI | `~/.codex/config.toml` | Network access is controlled via `sandbox_mode` / `[sandbox_workspace_write] network_access`, with proxy-based domain allowlisting on some versions. Check the current Codex config reference for exact field names before relying on it. |
 
 Skipping this is safe: without it, the client just prompts for approval on the skill's requests as usual.
+
+The plugin's MCP tools use Claude Code permission rules of the form `mcp__plugin_prime-security-operator_prime__<tool>`, for example `mcp__plugin_prime-security-operator_prime__get_repositories`. Do not pre-approve `call_prime_operation`, because it can change data in your Prime account.
 
 ## Manual Install Alternative
 

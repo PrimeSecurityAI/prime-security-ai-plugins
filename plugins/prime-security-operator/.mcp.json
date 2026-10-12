@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "prime": {
+      "type": "http",
+      "url": "${PRIME_API_URL:-https://api.primesec.ai}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PRIME_PAT_TOKEN}"
+      }
+    }
+  }
+}

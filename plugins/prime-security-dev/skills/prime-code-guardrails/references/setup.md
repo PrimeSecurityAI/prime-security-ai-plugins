@@ -23,18 +23,25 @@ The helper resolves credentials on each invocation:
 
 The token file works across clients and does not depend on exports surviving between shell tool calls. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
 
-Run this in **Bash** to create or replace the token file without echoing the token or recording it in shell history:
+Paste this into **Bash or zsh** on macOS/Linux. It runs an isolated Bash process and saves the token without echoing it or recording it in shell history. Failed or empty input leaves the existing token unchanged:
 
 ```bash
+bash -c '
+set -e
+if ! IFS= read -r -s -p "Prime PAT: " prime_pat || [ -z "$prime_pat" ]; then
+  printf "\nNo token entered; existing token unchanged.\n" >&2
+  exit 1
+fi
+printf "\n"
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
+umask 077
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
-umask 077
-read -r -s -p "Prime PAT: " prime_pat
-printf '\n'
-printf '%s\n' "$prime_pat" > "$config_dir/token"
-chmod 600 "$config_dir/token"
-unset prime_pat
+token_tmp=$(mktemp "$config_dir/token.XXXXXX")
+trap "rm -f -- \"\$token_tmp\"" EXIT
+printf "%s\n" "$prime_pat" > "$token_tmp"
+mv -f -- "$token_tmp" "$config_dir/token"
+'
 ```
 
 If replacing an environment credential, restart the agent from the updated environment. A non-empty environment variable takes precedence over the token file, including an expired token.

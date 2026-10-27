@@ -38,19 +38,25 @@ The login issues a regular 30-day PAT that appears under **Settings > Access > A
 
 If the login fails or the machine has no browser (SSH, CI, containers), stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
 
-For a Bash terminal, provide this safe setup example:
+For Bash or zsh on macOS/Linux, provide this setup example. It explicitly launches Bash without changing the parent shell; failed or empty input leaves the existing token unchanged:
 
 ```bash
-config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-config_dir="$config_root/prime-security"
+bash -c '
+set -e
+if ! IFS= read -r -s -p "Prime PAT: " prime_pat || [ -z "$prime_pat" ]; then
+  printf "\nNo token entered; existing token unchanged.\n" >&2
+  exit 1
+fi
+printf "\n"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
+umask 077
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
-umask 077
-read -r -s -p "Prime PAT: " prime_pat
-printf '\n'
-printf '%s\n' "$prime_pat" > "$config_dir/token"
-chmod 600 "$config_dir/token"
-unset prime_pat
+token_tmp=$(mktemp "$config_dir/token.XXXXXX")
+trap "rm -f -- \"\$token_tmp\"" EXIT
+printf "%s\n" "$prime_pat" > "$token_tmp"
+mv -f -- "$token_tmp" "$config_dir/token"
+'
 ```
 
 For another operating system or shell, tell the user to use hidden terminal input, write only the token to the same logical config path, and restrict the directory and file to the current user. The token must not appear in shell history.

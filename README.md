@@ -58,28 +58,48 @@ The skill resolves credentials in this order:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. To store it without terminal echo or shell history from Bash:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process, hides token input, and preserves the existing token if input is empty or cancelled:
 
 ```bash
-config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-config_dir="$config_root/prime-security"
+bash -c '
+set -e
+if ! IFS= read -r -s -p "Prime PAT: " prime_pat || [ -z "$prime_pat" ]; then
+  printf "\nNo token entered; existing token unchanged.\n" >&2
+  exit 1
+fi
+printf "\n"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
+umask 077
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
-umask 077
-read -r -s -p "Prime PAT: " prime_pat
-printf '\n'
-printf '%s\n' "$prime_pat" > "$config_dir/token"
-chmod 600 "$config_dir/token"
-unset prime_pat
+token_tmp=$(mktemp "$config_dir/token.XXXXXX")
+trap "rm -f -- \"\$token_tmp\"" EXIT
+printf "%s\n" "$prime_pat" > "$token_tmp"
+mv -f -- "$token_tmp" "$config_dir/token"
+'
 ```
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
 
-The MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
+The MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. For Claude Code, launch with a fresh token read from the file, scoped to that process:
 
 ```bash
-export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
+(
+  prime_token_file="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token"
+  if [ ! -f "$prime_token_file" ] || [ ! -r "$prime_token_file" ]; then
+    printf 'No readable Prime token. Sign in or save a PAT first.\n' >&2
+    exit 1
+  fi
+  prime_pat=$(cat "$prime_token_file") || exit 1
+  if [ -z "$prime_pat" ]; then
+    printf 'Empty Prime token. Sign in or save a PAT first.\n' >&2
+    exit 1
+  fi
+  PRIME_PAT_TOKEN="$prime_pat" claude
+)
 ```
+
+After re-login or replacing the PAT, quit Claude Code and run this launch command again. It reads the latest file each time and does not change `PRIME_PAT_TOKEN` in your shell. For other MCP clients, refresh their configured environment token and restart them after re-login; avoid saving a token value in a shell profile.
 
 If it is unset, the server rejects the connection with `401`.
 

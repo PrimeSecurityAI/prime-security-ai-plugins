@@ -3,7 +3,7 @@ import test from 'node:test';
 
 const adapter = new URL('../plugins/prime-security-dev/skills/prime-code-guardrails/adapters/opencode.js', import.meta.url);
 
-test('OpenCode starts without Python and reminds once per session', async () => {
+test('OpenCode starts without Python and includes guidance in every fresh request', async () => {
   const previous = process.env.PATH;
   process.env.PATH = '';
   try {
@@ -15,9 +15,11 @@ test('OpenCode starts without Python and reminds once per session', async () => 
     assert.match(output.system[1], /prime-code-guardrails/);
     const next = { system: [] };
     await hooks['experimental.chat.system.transform']({ sessionID: 'one' }, next);
-    assert.deepEqual(next.system, []);
-    await hooks['experimental.chat.system.transform']({ sessionID: 'two' }, next);
     assert.equal(next.system.length, 1);
+    assert.match(next.system[0], /prime-code-guardrails/);
+    const another = { system: [] };
+    await hooks['experimental.chat.system.transform']({ sessionID: 'two' }, another);
+    assert.equal(another.system.length, 1);
     assert.equal(hooks['tool.execute.after'], undefined);
   } finally {
     process.env.PATH = previous;

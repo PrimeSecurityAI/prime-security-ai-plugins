@@ -280,7 +280,8 @@ def load_context(client, remote):
                for key in ('guardrail_title', 'guardrail')):
             raise PrimeError('invalid_guardrail', 'Prime returned a guardrail without a title or policy text; loading failed.')
     return {'status': 'loaded', 'fetched_at': datetime.now(timezone.utc).isoformat(),
-            'guardrails': [{key: policy[key] for key in ('guardrail_title', 'guardrail', 'category') if key in policy}
+            'guardrails': [{key: policy[key] for key in ('guardrail_title', 'guardrail', 'category',
+                                                      'framework', 'policy_name', 'policy_id') if key in policy}
                           for policy in policies],
             'repository': repository_context(client, remote)}
 
@@ -306,8 +307,13 @@ def main():
         if args.approve_origin:
             print(json.dumps(approve_origin(args.approve_origin)))
             return 0
-        origin = validate_origin(os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN, args.allow_origin,
-                                 load_approved_origins())
+        value = os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN
+        try:
+            origin = validate_origin(value, args.allow_origin)
+        except PrimeError as error:
+            if error.code != 'origin_not_approved':
+                raise
+            origin = validate_origin(value, args.allow_origin, load_approved_origins())
         token = resolve_token()
         result = load_context(Client(origin, token), git_remote(args.repo))
         result['api_origin'] = origin

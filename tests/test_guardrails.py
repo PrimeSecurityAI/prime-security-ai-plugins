@@ -253,6 +253,35 @@ class GuardrailsTests(unittest.TestCase):
                 self.assertEqual(self.api.main(), 1)
             self.assertFalse(output.exists())
 
+    def test_same_title_policies_keep_their_source_identity(self):
+        policies = [dict(guardrail_title='Validation', guardrail='Validate input', framework='OWASP_ASVS',
+                         policy_name='API policy', policy_id=1),
+                    dict(guardrail_title='Validation', guardrail='Validate input', framework='OWASP_LLM',
+                         policy_name='AI policy', policy_id=2)]
+        client = type('FakeClient', (), {'get': lambda _, path: page(policies, total=2)})()
+        self.assertEqual(self.api.load_context(client, None)['guardrails'], policies)
+
+    def test_broken_saved_approvals_only_block_requests_that_depend_on_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'prime-security/approved-origins.json'
+            config.parent.mkdir(mode=0o700)
+            config.write_text('broken JSON')
+            config.chmod(0o600)
+            for origin, flags, expected in [
+                ('https://api.primesec.ai', [], 0),
+                ('https://api.primesec.dev', ['--allow-origin', 'https://api.primesec.dev'], 0),
+                ('https://api.primesec.dev', [], 1),
+            ]:
+                with self.subTest(origin=origin, flags=flags), \
+                     patch.dict(os.environ, {'PRIME_API_URL': origin, 'XDG_CONFIG_HOME': directory}), \
+                     patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
+                     patch.object(self.api, 'load_context', return_value={'status': 'loaded', 'guardrails': [], 'repository': {}}), \
+                     patch.object(sys, 'argv', [str(SCRIPT)] + flags), \
+                     patch('sys.stdout', new_callable=io.StringIO) as stdout:
+                    self.assertEqual(self.api.main(), expected)
+                    if expected:
+                        self.assertEqual(json.loads(stdout.getvalue())['code'], 'invalid_approval_file')
+
 
 if __name__ == '__main__':
     unittest.main()

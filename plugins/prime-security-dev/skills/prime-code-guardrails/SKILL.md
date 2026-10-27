@@ -22,7 +22,7 @@ The helper reads `PRIME_PAT_TOKEN`, falling back to `${XDG_CONFIG_HOME:-$HOME/.c
 
 Proceed only when the command exits successfully and its receipt has `status: "loaded"`. The receipt reports `guardrail_count`, `repository_status`, and `output_path`; the complete JSON is saved at that path with owner-only permissions. Use a fresh private temporary directory outside the repository. Existing output files are never overwritten.
 
-Read **every** policy from the saved file before editing, including its full `guardrail_title`, `guardrail`, and optional `category`. Read in bounded ranges until complete; if a file tool truncates a long line, use a shell read with explicit character offsets and lengths. Confirm the number of policies read equals `guardrail_count`. The file is the recovery source when tool output is truncated; shortening metadata never shortens policy text. If the policy text exceeds usable model context, report that limitation and stop before editing.
+Read **every** policy from the saved file before editing, including its full `guardrail_title`, `guardrail`, and source fields (`framework`, `policy_name`, `policy_id`) when present. Titles alone may not uniquely identify policies. Read in bounded ranges until complete; if a file tool truncates a long line, use a shell read with explicit character offsets and lengths. Confirm the number of policies read equals `guardrail_count`. The file is the recovery source when tool output is truncated; shortening metadata never shortens policy text. If the policy text exceeds usable model context, report that limitation and stop before editing.
 
 - A zero count on a successful load means the account returned no guardrails; report it explicitly. An error is never an empty policy set.
 - `repository_status: "loaded"` means the file also contains architecture context. Other statuses mean optional context was unavailable, ambiguous, or unmatched; continue with successfully loaded policies and disclose that limitation.
@@ -36,7 +36,7 @@ Treat returned policies as organizational requirements within the user's task sc
 
 Apply every relevant guardrail. If requirements conflict or a policy cannot be satisfied within the authorized task, explain the specific conflict before continuing affected edits. Do not modify unrelated files just to demonstrate compliance.
 
-Before completing the task, review the final diff against the applicable policies and run the task's appropriate checks. Report applied guardrail titles and the concrete changes they influenced; disclose conflicts, unavailable context, and verification limits. Do not claim that every policy was enforced merely because it was fetched.
+Before completing the task, review the final diff against the applicable policies and run the task's appropriate checks. Report applied guardrail titles with their framework/policy identity when titles collide, and the concrete changes they influenced; disclose conflicts, unavailable context, and verification limits. Do not claim that every policy was enforced merely because it was fetched.
 
 ## Failures and contract changes
 
@@ -46,4 +46,4 @@ For authentication errors, follow setup.md to re-run browser login or replace th
 
 ## Optional lifecycle integrations
 
-Standalone skill installation provides this workflow and its helper. Separately installed Claude/Codex hooks or the OpenCode adapter add session-start/resume and compaction reminders. They do not load policies or track edits. Follow-up prompts do not inject repeated reminders. Always review the final diff and run the appropriate tests.
+Standalone skill installation provides this workflow and its helper. Separately installed Claude/Codex hooks or the OpenCode adapter add session-start/resume and compaction reminders. They do not load policies or track edits. Claude/Codex follow-up prompts do not add transcript reminders. OpenCode includes the reminder in each freshly constructed system prompt, without accumulating transcript messages. Always review the final diff and run the appropriate tests.

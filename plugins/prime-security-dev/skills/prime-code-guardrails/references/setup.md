@@ -57,7 +57,7 @@ For a deployment you want to trust across sessions, explicitly save that **exact
 python3 "<skill-directory>/scripts/prime_guardrails.py" --approve-origin https://prime.example.com
 ```
 
-This only writes `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/approved-origins.json`; it performs no login or API request. Future runs with that origin need no flag. The configuration directory must be private (mode 700) and the approval file is mode 600 on POSIX. Wildcards and sibling domains are not trusted. Remove an origin from that JSON list to revoke saved approval. Agents should save approval only when the user explicitly asks to trust that destination across sessions.
+This only writes `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/approved-origins.json`; it performs no login or API request. Future runs with that origin need no flag. Saved approvals are read only when needed: a broken approval file does not block the default origin or a matching explicit `--allow-origin`. The configuration directory must be private (mode 700) and the approval file is mode 600 on POSIX. Wildcards and sibling domains are not trusted. Remove an origin from that JSON list to revoke saved approval. Agents should save approval only when the user explicitly asks to trust that destination across sessions.
 
 Redirects are refused, including same-origin redirects. Configure the final API origin directly.
 

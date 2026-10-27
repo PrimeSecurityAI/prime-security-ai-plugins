@@ -79,7 +79,7 @@ export { PrimeSecurityDev } from "/absolute/path/to/prime-code-guardrails/adapte
 
 Replace the absolute path with the canonical installed skill location, normally `~/.agents/skills/prime-code-guardrails` expanded to an absolute path. Preserve the skill's `adapters/package.json`. The adapter is self-contained JavaScript; it does not run Python at startup. Python is required when the agent runs the API helper. Restart OpenCode.
 
-The adapter adds context once per session and after compaction through OpenCode's experimental system/compaction hooks. These experimental APIs require revalidation when upgrading OpenCode. No npm runtime dependencies are required.
+The adapter includes one reminder in each freshly built OpenCode system prompt, including tool continuations and post-compaction requests. It does not append repeated messages to the conversation history. These experimental APIs require revalidation when upgrading OpenCode. No npm runtime dependencies are required.
 
 ## Data and limitations
 

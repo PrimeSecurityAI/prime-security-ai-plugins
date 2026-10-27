@@ -20,7 +20,7 @@ Choose standalone skill installation **or** a native plugin for a given client. 
 npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-dev/skills/prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --yes
 ```
 
-Omit unwanted `--agent` options. Omit `--global` for a project installation. Restart clients if discovery does not refresh. For controlled rollouts, replace `main` in the URL with your reviewed release tag or commit.
+Omit unwanted `--agent` options. Omit `--global` for a project installation. Restart clients if discovery does not refresh. For controlled rollouts, replace `main` in the URL with your reviewed release tag or full 40-character commit SHA. Short commit IDs are not supported by the Skills CLI.
 
 Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/OpenCode or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
 
@@ -96,6 +96,8 @@ For the standalone skill:
 npx skills update prime-code-guardrails --global --yes
 npx skills remove prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --yes
 ```
+
+For a commit-pinned installation, `skills update` keeps that pin. To advance it, repeat the install command with the next reviewed full commit SHA.
 
 For Claude plugins, use `claude plugin update prime-security-dev@prime` or `claude plugin uninstall prime-security-dev@prime`. For Codex plugins, use the plugin manager to refresh/reinstall the reviewed version, or `codex plugin remove prime-security-dev@prime`. Remove the OpenCode wrapper when removing its skill. Restart affected clients.
 

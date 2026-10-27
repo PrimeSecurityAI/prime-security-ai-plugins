@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/skills/prime-code-guardrails/scripts/prime_hooks.py\" reminder",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

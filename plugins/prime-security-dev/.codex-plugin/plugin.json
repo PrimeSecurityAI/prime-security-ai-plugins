@@ -1,0 +1,8 @@
+{
+  "name": "prime-security-dev",
+  "version": "1.2.0",
+  "description": "Prime Security policy guidance with lifecycle reminders",
+  "author": {"name": "Prime Security"},
+  "skills": "./skills/",
+  "hooks": "./hooks/codex.json"
+}

@@ -3,7 +3,10 @@
     "prime": {
       "type": "http",
       "url": "${PRIME_API_URL:-https://api.primesec.ai}/mcp",
-      "headersHelper": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/prime-code-guardrails/scripts/prime_mcp_headers.py\""
+      "headers": {
+        "Authorization": "Bearer ${PRIME_PAT_TOKEN:-}"
+      },
+      "headersHelper": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/prime_mcp_headers.py\""
     }
   }
 }

@@ -45,12 +45,10 @@ When no credential is configured, the skill runs `scripts/prime_login.py`. It op
 
 Credential precedence is:
 
-1. `PRIME_PAT_TOKEN`
-2. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
+1. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
+2. `PRIME_PAT_TOKEN`, used only when the token file does not exist, for example a CI secret
 
-`PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
-
-For the shared-file setup, run `unset PRIME_PAT_TOKEN`, remove old exports from shell profiles or client launch settings, then fully quit and restart the client. An inherited environment token overrides the file for skills even after re-login. Subsequent browser logins update the file, which the skill reads on its next authenticated request.
+An unsafe or invalid token file is reported as an error and never falls back to `PRIME_PAT_TOKEN`. `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`. Browser logins update the file, which the skill reads on its next authenticated request.
 
 On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process with hidden input and restrictive permissions. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
@@ -102,11 +100,11 @@ The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<
 
 The Claude marketplace plugin also connects Claude Code to the Prime MCP server through `.mcp.json`. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
 
-The plugin uses `headersHelper` to read the private shared token file on every connection. This was validated with Claude Code **2.1.312**; update older clients before using this setup. The helper ignores `PRIME_PAT_TOKEN`, so launch Claude normally without exporting a token.
+The plugin's `headersHelper` reads the private shared token file on every connection, and the plugin falls back to `PRIME_PAT_TOKEN` only when the file does not exist. This was validated with Claude Code **2.1.312**; update older clients before using this setup. Launch Claude normally without exporting a token.
 
 On first startup, a missing token leaves MCP disconnected while the skill remains available. Invoke `/prime-security-operator:prime` and complete browser login, or save a PAT above. Then open `/mcp`, select the Prime server, and reconnect. After re-login or replacing the PAT, repeat `/mcp` reconnect to read the new file without restarting Claude.
 
-Portable skills use the file directly when `PRIME_PAT_TOKEN` is unset. Codex, OpenCode, and Cursor MCP configurations instead require a token in the client process environment; use the [process-scoped launch instructions](../../README.md#environment-based-mcp-clients). Fully quit and relaunch those clients after re-login, because their environment token also overrides the file for skills.
+Other MCP clients require a token in the client process environment; use the [process-scoped launch instructions](../../README.md#environment-based-mcp-clients). Fully quit and relaunch those clients after re-login so their MCP connection uses the new token.
 
 ## Pre-Approving Network Access
 

@@ -7,8 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPTS = [ROOT / 'plugins' / plugin / 'skills' / skill / 'scripts/prime_mcp_headers.py'
-           for plugin, skill in [('prime-security-dev', 'prime-code-guardrails'), ('prime-security-operator', 'prime')]]
+SCRIPTS = [ROOT / 'plugins' / plugin / 'scripts/prime_mcp_headers.py' for plugin in ('prime-security-dev', 'prime-security-operator')]
 
 
 class McpHeaderTests(unittest.TestCase):
@@ -28,33 +27,34 @@ class McpHeaderTests(unittest.TestCase):
                     self.assertEqual(json.loads(result.stdout), {'Authorization': 'Bearer ' + value})
                     self.assertEqual(result.stderr, '')
 
-    def test_missing_and_invalid_files_fail_without_disclosing_token(self):
+    def test_missing_file_keeps_environment_header(self):
         for script in SCRIPTS:
             with self.subTest(script=script), tempfile.TemporaryDirectory() as directory:
-                token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
-                for value in [None, '', '   ', 'bad secret', '\xff', 'valid-secret']:
-                    if value is not None:
-                        token.write_bytes(value.encode('latin-1')); token.chmod(0o644 if value == 'valid-secret' else 0o600)
-                    result = self.run_helper(script, directory)
-                    self.assertEqual(result.returncode, 1)
-                    self.assertEqual(result.stdout, '')
-                    self.assertNotIn('secret', result.stderr)
-                    self.assertIn('Prime token', result.stderr)
+                result = self.run_helper(script, directory)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), {})
 
-    def test_symlink_is_rejected(self):
+    def test_unsafe_or_invalid_file_blocks_environment_fallback(self):
         for script in SCRIPTS:
             with self.subTest(script=script), tempfile.TemporaryDirectory() as directory:
                 token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
                 target = Path(directory) / 'other'; target.write_text('private-token'); target.chmod(0o600)
-                token.symlink_to(target)
-                result = self.run_helper(script, directory)
-                self.assertEqual(result.returncode, 1)
-                self.assertEqual(result.stdout, '')
+                for value in ['', '   ', 'bad secret', '\xff', 'valid-secret', 'symlink']:
+                    token.unlink(missing_ok=True)
+                    if value == 'symlink':
+                        token.symlink_to(target)
+                    else:
+                        token.write_bytes(value.encode('latin-1')); token.chmod(0o644 if value == 'valid-secret' else 0o600)
+                    result = self.run_helper(script, directory)
+                    self.assertEqual(result.returncode, 0)
+                    self.assertEqual(json.loads(result.stdout), {'Authorization': ''})
+                    self.assertNotIn('secret', result.stderr)
+                    self.assertIn('Prime token', result.stderr)
 
-    def test_both_packages_include_identical_helpers_and_dynamic_configs(self):
+    def test_both_plugins_include_identical_helpers_and_environment_fallback(self):
         self.assertEqual(SCRIPTS[0].read_bytes(), SCRIPTS[1].read_bytes())
         for script in SCRIPTS:
-            plugin = script.parents[3]
+            plugin = script.parents[1]
             config = json.loads((plugin / '.mcp.json').read_text())['mcpServers']['prime']
-            self.assertEqual(set(config), {'type', 'url', 'headersHelper'})
-            self.assertIn(str(script.relative_to(plugin)), config['headersHelper'])
+            self.assertEqual(config['headers'], {'Authorization': 'Bearer ${PRIME_PAT_TOKEN:-}'})
+            self.assertIn('${CLAUDE_PLUGIN_ROOT}/' + str(script.relative_to(plugin)), config['headersHelper'])

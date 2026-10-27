@@ -1,7 +1,7 @@
 ---
 name: prime
 description: Use when interacting with Prime Security for security design reviews, knowledge base and policy search, repository analysis, code reviews, or AI-assisted security conversations through the Prime API.
-compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses PRIME_PAT_TOKEN or the standard Prime Security token file. Browser login requires python3 3.9 or later.
+compatibility: Requires network access to the Prime API and curl or an equivalent HTTP client. Authentication uses the standard Prime Security token file or PRIME_PAT_TOKEN. Browser login requires python3 3.9 or later.
 ---
 
 # Prime Security
@@ -23,12 +23,10 @@ Before sending credentials, require the base URL to use HTTPS and reject URLs co
 
 Resolve the PAT immediately before an authenticated request, in this order:
 
-1. The non-empty `PRIME_PAT_TOKEN` environment variable.
-2. The file `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`.
+1. The file `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`.
+2. The non-empty `PRIME_PAT_TOKEN` environment variable, only when the token file does not exist.
 
-Treat the PAT as an opaque string. When reading the token file, remove only its trailing line ending; do not decode or parse the token.
-
-For shared-file setup or migration from older instructions, tell the user to run `unset PRIME_PAT_TOKEN`, remove its old exports from shell profiles or client launch settings, and fully quit and restart the client. An inherited environment token takes precedence over a renewed token file. With the override removed, resolve the current file again on each authenticated request.
+Treat the PAT as an opaque string. When reading the token file, remove only its trailing line ending; do not decode or parse the token. If the token file exists but is unreadable, not a private regular file, or empty, stop and tell the user to fix or replace it; do not fall back to `PRIME_PAT_TOKEN`.
 
 If neither source contains a token, log the user in through the browser before making an authenticated request:
 
@@ -73,9 +71,9 @@ mv -f -- "$token_tmp" "$config_dir/token"
 
 For another operating system or shell, tell the user to use hidden terminal input, write only the token to the same logical config path, and restrict the directory and file to the current user. The token must not appear in shell history.
 
-The Claude plugin's MCP connection uses `headersHelper` to read the private shared token file on each connection, independently of the environment override. This was validated with Claude Code **2.1.312**. On first startup, missing credentials leave MCP disconnected while this skill remains available for browser login. After browser login, re-login, or PAT replacement, tell the user to open `/mcp` and reconnect the Prime server. Claude does not need a token in its process environment or a restart for file renewal.
+The Claude plugin's MCP connection uses `headersHelper` to read the private shared token file on each connection, falling back to `PRIME_PAT_TOKEN` only when the file does not exist. This was validated with Claude Code **2.1.312**. On first startup, missing credentials leave MCP disconnected while this skill remains available for browser login. After browser login, re-login, or PAT replacement, tell the user to open `/mcp` and reconnect the Prime server. Claude does not need a token in its process environment or a restart for file renewal.
 
-Portable skills do not install an MCP connection. Codex, OpenCode, and Cursor MCP configurations require a process environment token; refer to the [MCP launch instructions](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#environment-based-mcp-clients). Those clients must fully quit and relaunch after token renewal, because the inherited token also takes precedence for this skill.
+Portable skills do not install an MCP connection. Other MCP clients require a process environment token; refer to the [MCP launch instructions](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#environment-based-mcp-clients). Those clients must fully quit and relaunch after token renewal so their MCP connection uses the new token.
 
 ## API Documentation Workflow
 
@@ -103,7 +101,7 @@ Do not infer authentication from another endpoint. Follow the selected endpoint'
 
 ## Error Handling
 
-- `401`: The credential is missing, invalid, expired (browser-login tokens last 30 days), or revoked. If the token came from the token file and the machine has a browser, run the browser login once and retry. If it came from `PRIME_PAT_TOKEN`, direct the user to replace it through their terminal; never request it in chat.
+- `401`: The credential is missing, invalid, expired (browser-login tokens last 30 days), or revoked. If the machine has a browser, run the browser login once and retry; it replaces the token file. Otherwise, direct the user to create a new PAT and save it with the terminal setup above; never request it in chat.
 - `403`: Report that the credential is not allowed to perform this action.
 - `400` or `422`: Recheck the relevant route-group document and request schema.
 - `404` or `405`: Refetch `/llm.txt`, then the relevant group document, before retrying because the route or method may have changed.

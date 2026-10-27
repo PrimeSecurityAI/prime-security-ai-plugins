@@ -15,13 +15,18 @@ def main():
             info = os.fstat(stream.fileno())
             if not stat.S_ISREG(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
                 raise ValueError('Unsafe token file')
-            token = stream.read(16385).rstrip('\r\n')
+            token = stream.read(16385).removesuffix('\n').removesuffix('\r')
         if not token or len(token) > 16384 or any(ord(char) < 33 or ord(char) > 126 for char in token):
             raise ValueError('Invalid token')
+    except FileNotFoundError:
+        # Claude strips PRIME_PAT_TOKEN from plugin helpers; returning no header keeps the static environment header.
+        print('{}')
+        return 0
     except (OSError, ValueError, UnicodeError):
-        print('Prime token unavailable or invalid. Sign in with the prime skill or save a PAT in the private token file (mode 600), then reconnect Prime in /mcp.', file=sys.stderr)
-        return 1
-    # File only: browser re-login must take effect even if an old export exists.
+        print('Prime token file is unsafe or invalid. Sign in with the prime skill or save a PAT in the private token file (mode 600), then reconnect Prime in /mcp.', file=sys.stderr)
+        # An empty header replaces the static environment header, so a broken file never falls back to another credential.
+        print(json.dumps({'Authorization': ''}))
+        return 0
     print(json.dumps({'Authorization': 'Bearer ' + token}))
     return 0
 

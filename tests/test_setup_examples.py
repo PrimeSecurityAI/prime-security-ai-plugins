@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import stat
 import subprocess
@@ -86,7 +85,7 @@ class SetupExamplesTests(unittest.TestCase):
 
     def test_environment_mcp_launch_preserves_arguments_and_parent(self):
         for shell in self.shells():
-            for client in ('codex', 'opencode', 'cursor'):
+            for client in ('claude', 'codex', 'opencode', 'cursor'):
                 with self.subTest(shell=shell, client=client), tempfile.TemporaryDirectory() as directory:
                     token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
                     script = (f'{client}() {{ printf "%s\\n" "$PRIME_PAT_TOKEN" "$@" > "$XDG_CONFIG_HOME/received"; }}\n'
@@ -102,7 +101,7 @@ class SetupExamplesTests(unittest.TestCase):
 
     def test_environment_mcp_invalid_token_blocks_launch(self):
         for shell in self.shells():
-            for content in (None, '', '\n', ' \t\n', 'bad token\n'):
+            for content in (None, '', '\n', ' \t\n', 'bad token\n', 'bad-token\r\n'):
                 with self.subTest(shell=shell, content=repr(content)), tempfile.TemporaryDirectory() as directory:
                     token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
                     if content is not None: token.write_text(content)
@@ -113,6 +112,16 @@ class SetupExamplesTests(unittest.TestCase):
                     self.assertFalse((Path(directory) / 'launched').exists())
                     self.assertIn('Sign in or save a PAT', result.stderr)
 
+    def test_environment_mcp_function_pastes_into_interactive_zsh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            token = Path(directory) / 'prime-security/token'; token.parent.mkdir(); token.write_text('dummy-token\n')
+            script = (example('README.md', 'prime_mcp()')
+                      + 'codex() { printf "%s" "$PRIME_PAT_TOKEN" > "$XDG_CONFIG_HOME/received"; }\nprime_mcp codex\nexit\n')
+            env = {**os.environ, 'XDG_CONFIG_HOME': directory, 'HOME': directory}
+            result = subprocess.run(['zsh', '-f', '-i'], input=script, text=True, capture_output=True, env=env, timeout=10)
+            self.assertNotIn('event not found', result.stderr)
+            self.assertEqual((Path(directory) / 'received').read_text(), 'dummy-token')
+
     def test_claude_docs_describe_file_headers_and_reconnect(self):
         for doc in ('README.md', 'plugins/prime-security-operator/README.md', 'plugins/prime-security-dev/README.md'):
             with self.subTest(doc=doc):
@@ -120,28 +129,3 @@ class SetupExamplesTests(unittest.TestCase):
                 self.assertIn('headersHelper', text)
                 self.assertIn('2.1.312', text)
                 self.assertIn('/mcp', text)
-                self.assertNotIn('PRIME_PAT_TOKEN="$prime_pat" claude', text)
-
-    def test_claude_manual_config_requires_real_helper_and_quotes_path(self):
-        for shell in self.shells():
-            with self.subTest(shell=shell), tempfile.TemporaryDirectory() as directory:
-                helper = Path(directory) / 'installed skill/prime_mcp_headers.py'
-                received = Path(directory) / 'received'
-                claude = Path(directory) / 'claude'
-                claude.write_text('#!/usr/bin/env python3\nimport json, os, sys\n'
-                                  'from pathlib import Path\n'
-                                  'Path(os.environ["XDG_CONFIG_HOME"], "received").write_text(json.dumps(sys.argv[1:]))\n')
-                claude.chmod(0o700)
-                script = example('README.md', 'subprocess.run').replace(
-                    '/absolute/path/to/prime/scripts/prime_mcp_headers.py', str(helper))
-                result = self.run_example(shell, script, directory)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertFalse(received.exists())
-                helper.parent.mkdir(); helper.touch()
-                result = self.run_example(shell, script, directory)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                arguments = json.loads(received.read_text())
-                self.assertEqual(arguments[:5], ['mcp', 'add-json', '--scope', 'user', 'prime'])
-                config = json.loads(arguments[5])
-                self.assertEqual(set(config), {'type', 'url', 'headersHelper'})
-                self.assertEqual(shlex.split(config['headersHelper']), ['python3', str(helper)])

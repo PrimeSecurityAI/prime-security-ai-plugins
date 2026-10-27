@@ -18,7 +18,7 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 - For the `prime` skill's browser login: `python3` 3.9 or later.
 - For the Skills CLI installation only: Node.js 22.20.0 or later with `npx`, and HTTPS access to GitHub and npm.
 
-On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. Claude Code plugins read that file for MCP authentication; other clients have separate MCP setup below.
+On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. Skills, the development guardrails helper, and Claude Code plugin MCP connections all read the shared token file below, falling back to `PRIME_PAT_TOKEN` only when that file does not exist. Other MCP clients have separate setup below.
 
 ## Install The Portable Skill
 
@@ -51,14 +51,12 @@ Restart a client if it does not detect a newly installed, updated, or removed sk
 
 When no credential is configured, the operator `prime` skill runs its browser login. After you log in and click **Authorize**, it saves a 30-day token to the token file below. The token appears under **Settings > Access > API Token**, where you can revoke it. The standalone dev skill can use this same file, but does not bundle browser login; install the operator skill or use the PAT setup below.
 
-The skills resolve credentials immediately before requests, in this order:
+Credentials resolve immediately before each request or connection, in this order:
 
-1. `PRIME_PAT_TOKEN`
-2. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
+1. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
+2. `PRIME_PAT_TOKEN`, used only when the token file does not exist, for example a CI secret
 
-`PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
-
-For the shared-file setup, run `unset PRIME_PAT_TOKEN`, remove old `PRIME_PAT_TOKEN` exports from shell profiles or client launch settings, then fully quit and restart the client. An inherited environment token overrides the file for skills, even after browser re-login. Do not save token values in shell profiles.
+An unsafe or invalid token file is reported as an error and never falls back to `PRIME_PAT_TOKEN`. `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`. Do not save token values in shell profiles.
 
 On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process and hides input. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
@@ -93,7 +91,7 @@ mv -f -- "$token_tmp" "$config_dir/token"
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
 
-After browser re-login or PAT replacement, skills using the file read the new token on their next authenticated request. Claude Code plugins refresh MCP authentication when you reconnect through `/mcp`. Codex, OpenCode, and Cursor MCP configurations require the process environment setup below.
+After browser re-login or PAT replacement, skills using the file read the new token on their next authenticated request. Claude Code plugins refresh MCP authentication when you reconnect through `/mcp`. Other MCP clients require the process environment setup below.
 
 ## MCP Server
 
@@ -121,52 +119,24 @@ On Team and Enterprise plans, an organization Owner adds the connector, and each
 
 ### Claude Code
 
-Installing either Claude Code plugin connects the server using `headersHelper`, which reads the private shared token file on each connection. This was validated with Claude Code **2.1.312**; update older clients before using this setup. The helper ignores `PRIME_PAT_TOKEN`, and Claude does not need a token in its process environment. `PRIME_API_URL` selects the API origin when set.
+Installing either Claude Code plugin connects the server. A plugin `headersHelper` reads the private token file on each connection, and the plugin falls back to `PRIME_PAT_TOKEN` when the file does not exist. Claude never needs a token in its process environment when the file is used. This was validated with Claude Code **2.1.312**; update older clients before using this setup. `PRIME_API_URL` selects the API origin when set.
 
 On first startup, missing credentials leave the MCP server disconnected while the skill remains available. Invoke `/prime-security-operator:prime` to sign in through the browser, or save a PAT above. A dev-only installation uses the PAT setup or a separately installed operator skill for browser login. Then open `/mcp`, select the Prime server, and reconnect. After re-login or replacing the PAT, repeat `/mcp` reconnect to read the current file without restarting Claude.
 
-Without a plugin, install the portable `prime` skill first, then add the same dynamic connection at user scope. Replace the path below with the absolute installed path to its bundled helper, normally `~/.agents/skills/prime/scripts/prime_mcp_headers.py` expanded to an absolute path. The command checks that the file exists and stores only its command path, never a token:
-
-```bash
-python3 - "/absolute/path/to/prime/scripts/prime_mcp_headers.py" <<'PY'
-import json
-from pathlib import Path
-import shlex
-import subprocess
-import sys
-
-helper = Path(sys.argv[1]).expanduser()
-if not helper.is_absolute() or not helper.is_file():
-    raise SystemExit("Set the absolute path to the installed prime_mcp_headers.py first.")
-config = {
-    "type": "http",
-    "url": "https://api.primesec.ai/mcp",
-    "headersHelper": "python3 " + shlex.quote(str(helper)),
-}
-subprocess.run(["claude", "mcp", "add-json", "--scope", "user", "prime", json.dumps(config)], check=True)
-PY
-```
-
-For a custom deployment, change `url` to its approved MCP URL. Use `/prime` for browser login and `/mcp` to reconnect. If you previously added a static `prime` connection, remove it with `claude mcp remove --scope user prime` before adding this one. Plugin installations manage their own connection and do not need this command.
+Without a plugin, configure Claude Code as an environment-based client below.
 
 ### Environment-Based MCP Clients
 
-The Codex, OpenCode, and Cursor MCP configurations below read `PRIME_PAT_TOKEN` from the client process. They cannot read the shared file directly. Portable skills alone can use the file without this setup; enabling MCP supplies an environment token that also takes precedence for skills in that client.
+The MCP configurations below read `PRIME_PAT_TOKEN` from the client process. They cannot read the shared file directly, and the client and its shell tools can read the environment token. Portable skills alone use the file without this setup.
 
 After saving a token, paste this function into Bash or zsh. It reads the current file each time, supplies the token only to the launched client, and forwards every client argument unchanged:
 
 ```bash
 prime_mcp() (
-  LC_ALL=C
-  prime_token_file="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token"
-  if [ ! -f "$prime_token_file" ] || [ ! -r "$prime_token_file" ]; then
-    printf 'No readable Prime token. Sign in or save a PAT first.\n' >&2
-    exit 1
-  fi
-  prime_pat=$(cat "$prime_token_file") || exit 1
+  prime_pat=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token" 2>/dev/null)
   case "$prime_pat" in
-    ""|*[![:graph:]]*)
-      printf 'Invalid Prime token. Sign in or save a PAT first.\n' >&2
+    ""|*[[:space:][:cntrl:]]*)
+      printf 'No valid Prime token. Sign in or save a PAT first.\n' >&2
       exit 1
       ;;
   esac
@@ -175,6 +145,18 @@ prime_mcp() (
 ```
 
 After browser re-login or PAT replacement, fully quit the client and launch it again through this function. Reconnecting MCP inside an already running client retains its old environment token. For Cursor, quit all existing windows and the application before launching from this terminal; an existing GUI process can retain its original environment. GUI launches outside this terminal do not inherit the function's token.
+
+### Claude Code Without A Plugin
+
+```bash
+claude mcp add --scope user --transport http prime https://api.primesec.ai/mcp --header 'Authorization: Bearer ${PRIME_PAT_TOKEN}'
+```
+
+Keep the single quotes so Claude stores the variable reference, not a token. If you previously added a `prime` connection, remove it with `claude mcp remove --scope user prime` first. Launch from the terminal where you defined `prime_mcp`:
+
+```bash
+prime_mcp claude
+```
 
 ### Codex
 
@@ -304,6 +286,7 @@ plugins/
 |-- prime-security-operator/
 |   |-- .claude-plugin/plugin.json
 |   |-- .mcp.json
+|   |-- scripts/prime_mcp_headers.py
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
     |-- .claude-plugin/plugin.json

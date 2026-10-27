@@ -18,7 +18,7 @@ Exercise each supported client: Claude Code, Codex, and OpenCode. Use an authori
 - A coding request selects the skill automatically, or the documented explicit invocation reliably invokes it.
 - Missing/expired credentials produce safe recovery instructions and no false success.
 - Follow-up messages reuse the ongoing task's policies; a new independent task or repository/account change reloads them.
-- Session start/resume and compaction recovery provide a reminder; ordinary prompts do not repeat it.
+- Session start/resume and compaction recovery provide guidance. Claude/Codex ordinary prompts do not add transcript reminders; OpenCode includes guidance in each fresh system prompt without accumulating messages.
 - Optional adapters work when enabled; explicit standalone invocation works without them.
 - Large policy sets are fully read from the artifact, including policy text longer than a shell output limit.
 - Update, uninstall, and restart leave no duplicate skill or broken adapter.

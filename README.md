@@ -9,7 +9,7 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 | `prime` skill | Calls the Prime API using its published route documentation | Claude Code, Codex, OpenCode, Cursor |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
 | `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code |
-| `prime-security-dev` plugin | Code guardrails skill and hooks, and the MCP server connection | Claude Code |
+| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode |
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 - For the `prime` skill's browser login: `python3` 3.9 or later.
 - For the Skills CLI installation only: Node.js 22.20.0 or later with `npx`, and HTTPS access to GitHub and npm.
 
-On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The `prime-security-dev` plugin and every MCP configuration except the Claude connector read a PAT from `PRIME_PAT_TOKEN`; see [Configure Credentials](#configure-credentials).
+On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. MCP configurations except the Claude connector read `PRIME_PAT_TOKEN`; see [Configure Credentials](#configure-credentials).
 
 ## Install The Portable Skill
 
@@ -207,7 +207,7 @@ claude plugin install prime-security-operator@prime
 
 Inside Claude Code, the equivalents are `/plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins` and `/plugin install prime-security-operator@prime`.
 
-The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. Install `prime-security-dev@prime` separately only if you need its code guardrails and hooks.
+The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. For development guardrails across Claude Code, Codex, and OpenCode, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
 
 ## Plugins
 
@@ -217,7 +217,7 @@ The cross-client Prime API skill packaged for Claude Code, plus the MCP server c
 
 ### prime-security-dev
 
-Claude Code-only code guardrails: the `prime-code-guardrails` skill, a `UserPromptSubmit` hook that has the agent load the guardrails once per session, a `PostToolUse` hook that records the files edited in the session, and the MCP server connection. It is versioned independently of the operator plugin and is not part of the portable installation.
+Portable `prime-code-guardrails` skill for Claude Code, Codex, and OpenCode, with safe shared credentials, a bundled API helper, and optional client lifecycle integrations. The Claude plugin retains its MCP server connection. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 

@@ -1,13 +1,23 @@
 {
   "hooks": {
-    "UserPromptSubmit": [
+    "SessionStart": [
       {
-        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guardrails_reminder.sh",
-            "timeout": 5000
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/prime-code-guardrails/scripts/prime_hooks.py\" reminder",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/prime-code-guardrails/scripts/prime_hooks.py\" reminder",
+            "timeout": 5
           }
         ]
       }
@@ -18,8 +28,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/track_touched_files.sh",
-            "timeout": 5000
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/prime-code-guardrails/scripts/prime_hooks.py\" track",
+            "timeout": 5
           }
         ]
       }

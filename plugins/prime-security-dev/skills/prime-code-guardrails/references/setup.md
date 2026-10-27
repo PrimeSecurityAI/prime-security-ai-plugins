@@ -21,18 +21,28 @@ The helper resolves credentials on each invocation:
 1. Non-empty `PRIME_PAT_TOKEN` inherited by the agent process.
 2. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`.
 
-The token file works across clients and does not depend on exports surviving between shell tool calls. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
+The token file works across clients and does not depend on exports surviving between shell tool calls. For the shared-file setup, run `unset PRIME_PAT_TOKEN`, remove old exports from shell profiles or client launch settings, and fully quit and restart the client. The helper then reads the current file on each invocation, including after browser re-login. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
 
-Paste this into **Bash or zsh** on macOS/Linux. It runs an isolated Bash process and saves the token without echoing it or recording it in shell history. Failed or empty input leaves the existing token unchanged:
+Paste this into **Bash or zsh** on macOS/Linux. It runs an isolated Bash process and saves the token without echoing it or recording it in shell history. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
 ```bash
 bash -c '
 set -e
-if ! IFS= read -r -s -p "Prime PAT: " prime_pat || [ -z "$prime_pat" ]; then
+LC_ALL=C
+IFS= read -r -s -p "Prime PAT: " prime_pat || {
+  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
+} || {
   printf "\nNo token entered; existing token unchanged.\n" >&2
   exit 1
-fi
+}
 printf "\n"
+prime_pat="${prime_pat%"$(printf "\r")"}"
+prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
+prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
+if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
+  printf "Invalid token; existing token unchanged.\n" >&2
+  exit 1
+fi
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
 umask 077
 mkdir -p "$config_dir"
@@ -44,7 +54,9 @@ mv -f -- "$token_tmp" "$config_dir/token"
 '
 ```
 
-If replacing an environment credential, restart the agent from the updated environment. A non-empty environment variable takes precedence over the token file, including an expired token.
+The Claude plugin's MCP `headersHelper` reads the shared file on each connection. After login or PAT replacement, open `/mcp` and reconnect the Prime server; a missing token does not prevent using the skill to complete setup. This was validated with Claude Code **2.1.312**. The standalone dev skill includes neither an MCP connection nor operator browser login.
+
+Codex, OpenCode, and Cursor MCP connections require a process environment token; see the [MCP launch instructions](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#environment-based-mcp-clients). Fully quit and relaunch those clients after replacement. A non-empty environment variable takes precedence over the token file for skills, including an expired token.
 
 ## Custom API origin
 

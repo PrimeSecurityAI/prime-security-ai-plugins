@@ -150,7 +150,7 @@ class Client:
         request = Request(self.origin + path, headers={
             'Authorization': 'Bearer ' + self.token,
             'Accept': 'application/json',
-            'User-Agent': 'prime-security-dev/1.2.0',
+            'User-Agent': 'prime-security-dev/1.2.1',
         })
         try:
             with self.opener.open(request, timeout=min(30, remaining)) as response:

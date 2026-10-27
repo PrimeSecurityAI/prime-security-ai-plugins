@@ -28,6 +28,8 @@ Resolve the PAT immediately before an authenticated request, in this order:
 
 Treat the PAT as an opaque string. When reading the token file, remove only its trailing line ending; do not decode or parse the token.
 
+For shared-file setup or migration from older instructions, tell the user to run `unset PRIME_PAT_TOKEN`, remove its old exports from shell profiles or client launch settings, and fully quit and restart the client. An inherited environment token takes precedence over a renewed token file. With the override removed, resolve the current file again on each authenticated request.
+
 If neither source contains a token, log the user in through the browser before making an authenticated request:
 
 1. Apply the base URL checks above, then tell the user that a browser window will open for the Prime Security login.
@@ -38,16 +40,26 @@ The login issues a regular 30-day PAT that appears under **Settings > Access > A
 
 If the login fails or the machine has no browser (SSH, CI, containers), stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
 
-For Bash or zsh on macOS/Linux, provide this setup example. It explicitly launches Bash without changing the parent shell; failed or empty input leaves the existing token unchanged:
+For Bash or zsh on macOS/Linux, provide this setup example. It explicitly launches Bash without changing the parent shell. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
 ```bash
 bash -c '
 set -e
-if ! IFS= read -r -s -p "Prime PAT: " prime_pat || [ -z "$prime_pat" ]; then
+LC_ALL=C
+IFS= read -r -s -p "Prime PAT: " prime_pat || {
+  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
+} || {
   printf "\nNo token entered; existing token unchanged.\n" >&2
   exit 1
-fi
+}
 printf "\n"
+prime_pat="${prime_pat%"$(printf "\r")"}"
+prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
+prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
+if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
+  printf "Invalid token; existing token unchanged.\n" >&2
+  exit 1
+fi
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
 umask 077
 mkdir -p "$config_dir"
@@ -60,6 +72,10 @@ mv -f -- "$token_tmp" "$config_dir/token"
 ```
 
 For another operating system or shell, tell the user to use hidden terminal input, write only the token to the same logical config path, and restrict the directory and file to the current user. The token must not appear in shell history.
+
+The Claude plugin's MCP connection uses `headersHelper` to read the private shared token file on each connection, independently of the environment override. This was validated with Claude Code **2.1.312**. On first startup, missing credentials leave MCP disconnected while this skill remains available for browser login. After browser login, re-login, or PAT replacement, tell the user to open `/mcp` and reconnect the Prime server. Claude does not need a token in its process environment or a restart for file renewal.
+
+Portable skills do not install an MCP connection. Codex, OpenCode, and Cursor MCP configurations require a process environment token; refer to the [MCP launch instructions](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#environment-based-mcp-clients). Those clients must fully quit and relaunch after token renewal, because the inherited token also takes precedence for this skill.
 
 ## API Documentation Workflow
 

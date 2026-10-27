@@ -194,6 +194,65 @@ class GuardrailsTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['status'], 'error')
         self.assertNotIn('Traceback', result.stderr)
 
+    def test_large_output_is_recoverable_private_and_compact(self):
+        policy = {'guardrail_title': 'Validate', 'guardrail': 'x' * 50000,
+                  'category': 'Validation', 'quote': 'unnecessary', 'external_id': 'id'}
+        client = type('FakeClient', (), {'get': lambda _, path: page([policy], total=1)})()
+        result = self.api.load_context(client, None)
+        self.assertNotIn('quote', result['guardrails'][0])
+        self.assertNotIn('external_id', result['guardrails'][0])
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'policies.json'
+            with patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
+                 patch.object(self.api, 'load_context', return_value=result), \
+                 patch.dict(os.environ, {'PRIME_API_URL': '', 'XDG_CONFIG_HOME': directory}), \
+                 patch.object(sys, 'argv', [str(SCRIPT), '--output', str(output)]), \
+                 patch('sys.stdout', new_callable=io.StringIO) as stdout:
+                self.assertEqual(self.api.main(), 0)
+            status = json.loads(stdout.getvalue())
+            self.assertEqual(status['guardrail_count'], 1)
+            self.assertEqual(status['output_path'], str(output))
+            self.assertLess(len(stdout.getvalue()), 1000)
+            self.assertEqual(json.loads(output.read_text())['guardrails'][0]['guardrail'], 'x' * 50000)
+            if os.name == 'posix':
+                self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+
+    def test_output_never_overwrites_an_existing_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'existing.json'
+            output.write_text('keep this')
+            with patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
+                 patch.object(self.api, 'load_context', return_value={'status': 'loaded', 'guardrails': [], 'repository': {}}), \
+                 patch.dict(os.environ, {'PRIME_API_URL': '', 'XDG_CONFIG_HOME': directory}), \
+                 patch.object(sys, 'argv', [str(SCRIPT), '--output', str(output)]), \
+                 patch('sys.stdout', new_callable=io.StringIO) as stdout:
+                self.assertEqual(self.api.main(), 1)
+            self.assertEqual(json.loads(stdout.getvalue())['status'], 'error')
+            self.assertEqual(output.read_text(), 'keep this')
+
+    def test_origin_approval_persists_only_the_exact_origin_without_network(self):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.dict(os.environ, {'XDG_CONFIG_HOME': directory}), \
+             patch.object(self.api.Client, 'get', side_effect=AssertionError('No network allowed')), \
+             patch.object(sys, 'argv', [str(SCRIPT), '--approve-origin', 'https://api.primesec.dev']), \
+             patch('sys.stdout', new_callable=io.StringIO):
+            self.assertEqual(self.api.main(), 0)
+            approved = self.api.load_approved_origins()
+            self.assertEqual(self.api.validate_origin('https://api.primesec.dev', approved_origins=approved), 'https://api.primesec.dev')
+            with self.assertRaises(self.api.PrimeError):
+                self.api.validate_origin('https://other.primesec.dev', approved_origins=approved)
+
+    def test_failed_load_does_not_create_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'failed.json'
+            with patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
+                 patch.object(self.api, 'load_context', side_effect=self.api.PrimeError('network_error', 'Unavailable')), \
+                 patch.dict(os.environ, {'PRIME_API_URL': '', 'XDG_CONFIG_HOME': directory}), \
+                 patch.object(sys, 'argv', [str(SCRIPT), '--output', str(output)]), \
+                 patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(self.api.main(), 1)
+            self.assertFalse(output.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

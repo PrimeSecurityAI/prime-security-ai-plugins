@@ -11,6 +11,7 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
@@ -30,7 +31,7 @@ class PrimeError(Exception):
         self.code = code
 
 
-def validate_origin(value, allowed_origin=None):
+def validate_origin(value, allowed_origin=None, approved_origins=()):
     try:
         url = urlsplit(value)
         valid = (url.scheme == 'https' and url.hostname and not url.username
@@ -45,9 +46,64 @@ def validate_origin(value, allowed_origin=None):
     if ':' in host:
         host = '[' + host + ']'
     origin = 'https://' + host + (f':{port}' if port and port != 443 else '')
-    if origin != DEFAULT_ORIGIN and allowed_origin != origin:
+    if origin != DEFAULT_ORIGIN and allowed_origin != origin and origin not in approved_origins:
         raise PrimeError('origin_not_approved', 'Custom API origin requires user approval and --allow-origin with that exact origin.')
     return origin
+
+
+def approval_file():
+    root = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    return root / 'prime-security/approved-origins.json'
+
+
+def load_approved_origins():
+    try:
+        fd = os.open(approval_file(), os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+        with os.fdopen(fd, 'r', encoding='utf-8') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+                raise ValueError('Unsafe approval file')
+            origins = json.loads(stream.read(65537))
+        if not isinstance(origins, list) or not all(isinstance(item, str) for item in origins):
+            raise ValueError('Invalid approval list')
+        return [validate_origin(origin, origin) for origin in origins]
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError):
+        raise PrimeError('invalid_approval_file', 'Cannot read the private approved-origins.json file; check ownership, permissions, and JSON format.') from None
+
+
+def write_private(path, text, replace=False):
+    """Publish a complete owner-only file, refusing existing output destinations."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(text + '\n')
+        if replace:
+            os.replace(temporary, path)
+        else:
+            os.link(temporary, path)
+    except OSError:
+        raise PrimeError('file_write_failed', 'Cannot save the private file; ensure its parent directory exists and an output destination does not already exist.') from None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def approve_origin(value):
+    origin = validate_origin(value, value.rstrip('/'))
+    origins = load_approved_origins()
+    path = approval_file()
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = path.parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+            raise OSError('Unsafe configuration directory')
+    except OSError:
+        raise PrimeError('invalid_approval_file', 'The Prime configuration directory must be private and owned by the current user.') from None
+    write_private(path, json.dumps(sorted(set(origins + [origin])), indent=2), replace=True)
+    return {'status': 'approved', 'api_origin': origin}
 
 
 def resolve_token():
@@ -103,7 +159,7 @@ class Client:
             code = error.code
             error.close()
             if code in (401, 403):
-                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; configure a valid PAT in your terminal.') from None
+                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; re-run browser login or configure a valid PAT in your terminal. See references/setup.md; an environment token overrides the token file.') from None
             if code == 429:
                 raise PrimeError('rate_limited', 'Prime rate limit reached; retry later.') from None
             if 300 <= code < 400:
@@ -224,7 +280,9 @@ def load_context(client, remote):
                for key in ('guardrail_title', 'guardrail')):
             raise PrimeError('invalid_guardrail', 'Prime returned a guardrail without a title or policy text; loading failed.')
     return {'status': 'loaded', 'fetched_at': datetime.now(timezone.utc).isoformat(),
-            'guardrails': policies, 'repository': repository_context(client, remote)}
+            'guardrails': [{key: policy[key] for key in ('guardrail_title', 'guardrail', 'category') if key in policy}
+                          for policy in policies],
+            'repository': repository_context(client, remote)}
 
 
 def git_remote(directory):
@@ -240,13 +298,27 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', default='.', help='Local repository directory (default: current directory)')
     parser.add_argument('--allow-origin', help='Exact custom HTTPS origin explicitly approved by the user')
+    parser.add_argument('--approve-origin', help='Save approval for this exact HTTPS origin and exit without an API call')
+    parser.add_argument('--output', type=Path, help='Save complete JSON to a new private file and print only a short receipt')
     args = parser.parse_args()
     token = None
     try:
-        origin = validate_origin(os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN, args.allow_origin)
+        if args.approve_origin:
+            print(json.dumps(approve_origin(args.approve_origin)))
+            return 0
+        origin = validate_origin(os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN, args.allow_origin,
+                                 load_approved_origins())
         token = resolve_token()
         result = load_context(Client(origin, token), git_remote(args.repo))
         result['api_origin'] = origin
+        result['repository_directory'] = str(Path(args.repo).resolve())
+        if args.output:
+            output_path = args.output.absolute()
+            data = json.dumps(result, ensure_ascii=True, indent=2).replace(json.dumps(token)[1:-1], '[REDACTED]')
+            write_private(output_path, data)
+            result = {'status': 'loaded', 'guardrail_count': len(result['guardrails']),
+                      'repository_status': result['repository']['status'], 'output_path': str(output_path),
+                      'api_origin': origin}
         exit_code = 0
     except PrimeError as error:
         result = {'status': 'error', 'code': error.code, 'message': str(error)}

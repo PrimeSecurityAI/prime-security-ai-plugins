@@ -1,6 +1,7 @@
 name: Validate Prime Security Dev
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read

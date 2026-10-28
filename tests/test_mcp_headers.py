@@ -12,9 +12,10 @@ SCRIPTS = [ROOT / 'plugins' / plugin / 'scripts/prime_mcp_headers.py' for plugin
 
 
 class McpHeaderTests(unittest.TestCase):
-    def run_helper(self, script, directory):
+    def run_helper(self, script, directory, url='https://api.primesec.ai/mcp'):
         return subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
-                              env={**os.environ, 'XDG_CONFIG_HOME': directory, 'PRIME_PAT_TOKEN': 'stale-secret'})
+                              env={**os.environ, 'XDG_CONFIG_HOME': directory, 'PRIME_PAT_TOKEN': 'stale-secret',
+                                   'CLAUDE_CODE_MCP_SERVER_URL': url})
 
     def test_refresh_reads_file_even_with_stale_environment(self):
         for script in SCRIPTS:
@@ -40,17 +41,17 @@ class McpHeaderTests(unittest.TestCase):
             with self.subTest(script=script), tempfile.TemporaryDirectory() as directory:
                 token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
                 target = Path(directory) / 'other'; target.write_text('private-token'); target.chmod(0o600)
-                for value in ['', '   ', 'bad secret', '\xff', 'valid-secret', 'symlink']:
+                for value in ['', '   ', 'bad secret', '\xff', 'valid-secret', 'symlink', 'plain-http']:
                     token.unlink(missing_ok=True)
                     if value == 'symlink':
                         token.symlink_to(target)
                     else:
                         token.write_bytes(value.encode('latin-1')); token.chmod(0o644 if value == 'valid-secret' else 0o600)
-                    result = self.run_helper(script, directory)
+                    result = self.run_helper(script, directory, 'http://prime.example/mcp' if value == 'plain-http' else 'https://api.primesec.ai/mcp')
                     self.assertEqual(result.returncode, 0)
                     self.assertEqual(json.loads(result.stdout), {'Authorization': ''})
                     self.assertNotIn('secret', result.stderr)
-                    self.assertIn('Prime token', result.stderr)
+                    self.assertRegex(result.stderr, 'Prime (token file|MCP URL)')
 
     def test_both_plugins_include_identical_helpers_and_environment_fallback(self):
         self.assertEqual(SCRIPTS[0].read_bytes(), SCRIPTS[1].read_bytes())

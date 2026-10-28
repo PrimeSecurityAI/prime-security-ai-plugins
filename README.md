@@ -119,7 +119,7 @@ On Team and Enterprise plans, an organization Owner adds the connector, and each
 
 ### Claude Code
 
-Installing either Claude Code plugin connects the server. A plugin `headersHelper` reads the private token file on each connection, and the plugin falls back to `PRIME_PAT_TOKEN` when the file does not exist. Claude never needs a token in its process environment when the file is used. This was validated with Claude Code **2.1.312**; update older clients before using this setup. `PRIME_API_URL` selects the API origin when set.
+Installing either Claude Code plugin connects the server. A plugin `headersHelper` reads the private token file on each connection, and the plugin falls back to `PRIME_PAT_TOKEN` when the file does not exist. Claude never needs a token in its process environment when the file is used. This was validated with Claude Code **2.1.312**; update older clients before using this setup. `PRIME_API_URL` selects the API origin when set; the plugin sends no token unless it uses `https`.
 
 On first startup, missing credentials leave the MCP server disconnected while the skill remains available. Invoke `/prime-security-operator:prime` to sign in through the browser, or save a PAT above. A dev-only installation uses the PAT setup or a separately installed operator skill for browser login. Then open `/mcp`, select the Prime server, and reconnect. After re-login or replacing the PAT, repeat `/mcp` reconnect to read the current file without restarting Claude.
 

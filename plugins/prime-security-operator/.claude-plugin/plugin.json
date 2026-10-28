@@ -7,6 +7,7 @@
   },
   "repository": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins",
   "license": "MIT",
+  "privacyPolicyUrl": "https://www.primesec.ai/policies/privacy-policy",
   "keywords": ["security", "security-review", "prime", "compliance", "design-review", "api"],
   "skills": "./skills/"
 }

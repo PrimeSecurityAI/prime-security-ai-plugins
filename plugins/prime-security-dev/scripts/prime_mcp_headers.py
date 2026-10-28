@@ -8,6 +8,12 @@ import sys
 
 
 def main():
+    url = os.environ.get('CLAUDE_CODE_MCP_SERVER_URL')
+    if url and not url.startswith('https://'):
+        print('Prime MCP URL must use https. Set PRIME_API_URL to an https URL, then reconnect Prime in /mcp.', file=sys.stderr)
+        # An empty header also blocks the static environment header, so no token is sent over plain HTTP.
+        print(json.dumps({'Authorization': ''}))
+        return 0
     path = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'prime-security/token'
     try:
         fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))

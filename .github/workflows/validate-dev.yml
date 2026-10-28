@@ -28,3 +28,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zsh
       - run: python3 -m unittest discover -s tests -v
       - run: node --test tests/opencode.test.mjs
+      - name: Validate Claude plugins and marketplace
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.312
+          for target in plugins/prime-security-dev plugins/prime-security-operator .; do claude plugin validate "$target"; done

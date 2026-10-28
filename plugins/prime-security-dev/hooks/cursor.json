@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 ./skills/prime-code-guardrails/scripts/prime_hooks.py reminder",
+        "timeout": 5
+      }
+    ]
+  }
+}

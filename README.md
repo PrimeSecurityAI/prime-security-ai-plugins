@@ -8,8 +8,8 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 |---|---|---|
 | `prime` skill | Calls the Prime API using its published route documentation | Claude Code, Codex, OpenCode, Cursor |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
-| `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code |
-| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode |
+| `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code, Codex, Cursor |
+| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode, Cursor |
 
 ## Prerequisites
 
@@ -58,19 +58,35 @@ The skill resolves credentials in this order:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. To store it without terminal echo or shell history from Bash:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. Input is hidden. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
-config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-config_dir="$config_root/prime-security"
+bash -c '
+set -e
+LC_ALL=C
+IFS= read -r -s -p "Prime PAT: " prime_pat || {
+  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
+} || {
+  printf "\nNo token entered; existing token unchanged.\n" >&2
+  exit 1
+}
+printf "\n"
+prime_pat="${prime_pat%"$(printf "\r")"}"
+prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
+prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
+if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
+  printf "Invalid token; existing token unchanged.\n" >&2
+  exit 1
+fi
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
+umask 077
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
-umask 077
-read -r -s -p "Prime PAT: " prime_pat
-printf '\n'
-printf '%s\n' "$prime_pat" > "$config_dir/token"
-chmod 600 "$config_dir/token"
-unset prime_pat
+token_tmp=$(mktemp "$config_dir/token.XXXXXX")
+trap "rm -f -- \"\$token_tmp\"" EXIT
+printf "%s\n" "$prime_pat" > "$token_tmp"
+mv -f -- "$token_tmp" "$config_dir/token"
+'
 ```
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
@@ -118,6 +134,8 @@ claude mcp add --transport http --scope user prime https://api.primesec.ai/mcp -
 ```
 
 ### Codex
+
+The operator Codex plugin connects the server; see [Codex Plugins](#codex-plugins). Without a plugin:
 
 ```bash
 codex mcp add prime --url https://api.primesec.ai/mcp --bearer-token-env-var PRIME_PAT_TOKEN
@@ -207,13 +225,28 @@ claude plugin install prime-security-operator@prime
 
 Inside Claude Code, the equivalents are `/plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins` and `/plugin install prime-security-operator@prime`.
 
-The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. For development guardrails across Claude Code, Codex, and OpenCode, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
+The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code.
+
+## Cursor Plugins
+
+Both plugins also ship Cursor manifests, and `.cursor-plugin/marketplace.json` lists them. Each bundles its skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` from the environment that starts Cursor. Team admins can import this repository as a team marketplace. For a local install, copy the plugin directory (for example `plugins/prime-security-operator`) to `~/.cursor/plugins/local/<plugin-name>`, then run **Developer: Reload Window**. Install a plugin **or** the Skills CLI skill for Cursor, not both. For development guardrails across Claude Code, Codex, OpenCode, and Cursor, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
+
+## Codex Plugins
+
+The Codex marketplace (`.agents/plugins/marketplace.json`) lists both plugins:
+
+```bash
+codex plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+codex plugin add prime-security-operator@prime
+```
+
+The operator plugin bundles the `prime` skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` and always uses `https://api.primesec.ai/mcp`; Codex does not expand `PRIME_API_URL` in plugin MCP URLs. Install a plugin **or** the Skills CLI skill for Codex, not both.
 
 ## Plugins
 
 ### prime-security-operator
 
-The cross-client Prime API skill packaged for Claude Code, plus the MCP server connection. Its only canonical skill source is `plugins/prime-security-operator/skills/prime/SKILL.md`.
+The cross-client Prime API skill packaged for Claude Code, Codex, and Cursor, plus the MCP server connection. Its only canonical skill source is `plugins/prime-security-operator/skills/prime/SKILL.md`.
 
 ### prime-security-dev
 
@@ -222,18 +255,19 @@ Portable `prime-code-guardrails` skill for Claude Code, Codex, and OpenCode, wit
 ## Structure
 
 ```text
-.claude-plugin/marketplace.json
+.claude-plugin/marketplace.json      Claude marketplace
+.agents/plugins/marketplace.json     Codex marketplace
+.cursor-plugin/marketplace.json      Cursor marketplace
 plugins/
 |-- prime-security-operator/
-|   |-- .claude-plugin/plugin.json
+|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
 |   |-- .mcp.json
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
-    |-- .claude-plugin/plugin.json
+    |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
     |-- .mcp.json
-    |-- skills/prime-code-guardrails/SKILL.md
-    |-- hooks/hooks.json
-    `-- scripts/
+    |-- hooks/hooks.json codex.json cursor.json
+    `-- skills/prime-code-guardrails/
 ```
 
 ## License

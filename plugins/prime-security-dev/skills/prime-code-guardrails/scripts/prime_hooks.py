@@ -20,6 +20,8 @@ def main():
             raise ValueError('Invalid payload')
         if payload.get('hook_event_name') == 'SessionStart':
             print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': REMINDER}}))
+        elif payload.get('hook_event_name') == 'sessionStart':
+            print(json.dumps({'additional_context': REMINDER}))
         else:
             print('{}')
     except (ValueError, TypeError):

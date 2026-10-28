@@ -50,19 +50,35 @@ Credential precedence is:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Store it from Bash using hidden input and restrictive permissions:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Paste this into Bash or zsh on macOS/Linux. Input is hidden. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
-config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-config_dir="$config_root/prime-security"
+bash -c '
+set -e
+LC_ALL=C
+IFS= read -r -s -p "Prime PAT: " prime_pat || {
+  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
+} || {
+  printf "\nNo token entered; existing token unchanged.\n" >&2
+  exit 1
+}
+printf "\n"
+prime_pat="${prime_pat%"$(printf "\r")"}"
+prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
+prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
+if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
+  printf "Invalid token; existing token unchanged.\n" >&2
+  exit 1
+fi
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
+umask 077
 mkdir -p "$config_dir"
 chmod 700 "$config_dir"
-umask 077
-read -r -s -p "Prime PAT: " prime_pat
-printf '\n'
-printf '%s\n' "$prime_pat" > "$config_dir/token"
-chmod 600 "$config_dir/token"
-unset prime_pat
+token_tmp=$(mktemp "$config_dir/token.XXXXXX")
+trap "rm -f -- \"\$token_tmp\"" EXIT
+printf "%s\n" "$prime_pat" > "$token_tmp"
+mv -f -- "$token_tmp" "$config_dir/token"
+'
 ```
 
 On other systems, use hidden terminal input and grant only the current user access to the same logical token path. Never print or log the token.
@@ -82,9 +98,9 @@ The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<
 
 ## MCP Server
 
-The Claude marketplace plugin also connects Claude Code to the Prime MCP server through `.mcp.json`. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
+The Claude, Codex, and Cursor plugins also connect to the Prime MCP server. The Codex plugin always connects to `https://api.primesec.ai/mcp`, because Codex does not expand `PRIME_API_URL` in plugin MCP URLs. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor without a plugin, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
 
-The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, for example from the token file the browser login writes:
+The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, Codex, or Cursor, for example from the token file the browser login writes:
 
 ```bash
 export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
@@ -128,6 +144,15 @@ claude plugin install prime-security-operator@prime
 ```
 
 Invoke the plugin skill as `/prime-security-operator:prime`. Do not also install the plain `/prime` skill.
+
+## Codex Plugin Alternative
+
+```bash
+codex plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+codex plugin add prime-security-operator@prime
+```
+
+Start a new session. Do not also install the plain `prime` skill for Codex.
 
 ## Canonical Source
 

@@ -1,0 +1,10 @@
+{
+  "name": "prime-security-operator",
+  "version": "1.1.1",
+  "description": "Prime Security API skill and MCP server",
+  "author": {"name": "Prime Security"},
+  "skills": "./skills/",
+  "mcpServers": {
+    "prime": {"url": "https://api.primesec.ai/mcp", "bearer_token_env_var": "PRIME_PAT_TOKEN"}
+  }
+}

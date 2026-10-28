@@ -12,7 +12,7 @@
       "name": "prime-security-operator",
       "source": "./plugins/prime-security-operator",
       "description": "Prime Security API skill for security design reviews, knowledge base policy search, code repository analysis, and AI-assisted security conversations",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": {
         "name": "Prime Security"
       },
@@ -25,7 +25,7 @@
       "name": "prime-security-dev",
       "source": "./plugins/prime-security-dev",
       "description": "Prime Security policy guidance for coding agents, with optional lifecycle reminders",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "author": {
         "name": "Prime Security"
       },

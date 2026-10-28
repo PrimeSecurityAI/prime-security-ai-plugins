@@ -7,7 +7,7 @@ description: Load and apply the organization's Prime Security guardrails before 
 
 Load current organizational security policies before changing code, then apply the relevant policies to the requested work. This skill provides policy guidance; it does not certify compliance or replace security testing.
 
-Requires Python 3.10+ available as `python3`, HTTPS access to the Prime API, and a configured PAT. Git is optional for repository context. Supports Claude Code, Codex, and OpenCode.
+Requires Python 3.10+ available as `python3`, HTTPS access to the Prime API, and a configured PAT. Git is optional for repository context. Supports Claude Code, Codex, OpenCode, and Cursor.
 
 ## Load policies
 
@@ -46,4 +46,4 @@ For authentication errors, follow setup.md to re-run browser login or replace th
 
 ## Optional lifecycle integrations
 
-Standalone skill installation provides this workflow and its helper. Separately installed Claude/Codex hooks or the OpenCode adapter add session-start/resume and compaction reminders. They do not load policies or track edits. Claude/Codex follow-up prompts do not add transcript reminders. OpenCode includes the reminder in each freshly constructed system prompt, without accumulating transcript messages. Always review the final diff and run the appropriate tests.
+Standalone skill installation provides this workflow and its helper. Separately installed Claude/Codex hooks or the OpenCode adapter add session-start/resume and compaction reminders; the Cursor plugin adds a session-start reminder. They do not load policies or track edits. Claude/Codex/Cursor follow-up prompts do not add transcript reminders. OpenCode includes the reminder in each freshly constructed system prompt, without accumulating transcript messages. Always review the final diff and run the appropriate tests.

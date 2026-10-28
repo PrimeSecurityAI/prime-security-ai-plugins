@@ -1,0 +1,11 @@
+{
+  "name": "prime",
+  "owner": {"name": "Prime Security"},
+  "plugins": [
+    {
+      "name": "prime-security-dev",
+      "source": "plugins/prime-security-dev",
+      "description": "Prime Security policy guidance for coding agents"
+    }
+  ]
+}

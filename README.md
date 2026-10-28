@@ -9,7 +9,7 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 | `prime` skill | Calls the Prime API using its published route documentation | Claude Code, Codex, OpenCode, Cursor |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
 | `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code |
-| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode |
+| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode, Cursor |
 
 ## Prerequisites
 
@@ -223,7 +223,7 @@ claude plugin install prime-security-operator@prime
 
 Inside Claude Code, the equivalents are `/plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins` and `/plugin install prime-security-operator@prime`.
 
-The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. For development guardrails across Claude Code, Codex, and OpenCode, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
+The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. For development guardrails across Claude Code, Codex, OpenCode, and Cursor, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
 
 ## Plugins
 

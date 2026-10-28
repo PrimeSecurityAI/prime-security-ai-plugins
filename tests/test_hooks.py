@@ -21,6 +21,10 @@ class HookTests(unittest.TestCase):
                 self.assertEqual(context['hookEventName'], 'SessionStart')
                 self.assertIn('prime-code-guardrails', context['additionalContext'])
 
+    def test_cursor_session_start_provides_context(self):
+        result = self.invoke({'hook_event_name': 'sessionStart', 'composer_mode': 'agent'})
+        self.assertIn('prime-code-guardrails', json.loads(result.stdout)['additional_context'])
+
     def test_ordinary_prompts_do_not_add_reminders(self):
         result = self.invoke({'hook_event_name': 'UserPromptSubmit'})
         self.assertEqual(json.loads(result.stdout), {})
@@ -32,11 +36,16 @@ class HookTests(unittest.TestCase):
         self.assertNotIn('private-payload', result.stdout + result.stderr)
 
     def test_manifests_only_register_session_reminders(self):
-        for name in ('hooks.json', 'codex.json'):
+        for name, event in (('hooks.json', 'SessionStart'), ('codex.json', 'SessionStart'), ('cursor.json', 'sessionStart')):
             hooks = json.loads((ROOT / 'hooks' / name).read_text())['hooks']
-            self.assertEqual(set(hooks), {'SessionStart'})
+            self.assertEqual(set(hooks), {event})
 
     def test_codex_manifest_registers_hooks_without_mcp(self):
         manifest = json.loads((ROOT / '.codex-plugin/plugin.json').read_text())
         self.assertEqual((manifest['hooks'], manifest['mcpServers']), ('./hooks/codex.json', {}))
         self.assertFalse((ROOT / 'plugin.json').exists())  # Codex drops all hooks for agent-plugins root manifests
+
+    def test_cursor_manifest_registers_skill_and_hooks(self):
+        manifest = json.loads((ROOT / '.cursor-plugin/plugin.json').read_text())
+        self.assertEqual((manifest['skills'], manifest['hooks']), ('./skills/', './hooks/cursor.json'))
+        self.assertTrue((ROOT / manifest['logo']).is_file())

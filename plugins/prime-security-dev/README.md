@@ -1,6 +1,6 @@
 # prime-security-dev
 
-Load your organization's security guardrails before coding in **Claude Code, Codex, or OpenCode**. The portable `prime-code-guardrails` skill fetches current policies and optional repository architecture context, then guides implementation and diff review.
+Load your organization's security guardrails before coding in **Claude Code, Codex, OpenCode, or Cursor**. The portable `prime-code-guardrails` skill fetches current policies and optional repository architecture context, then guides implementation and diff review.
 
 This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
 
@@ -17,14 +17,14 @@ This is policy guidance, not a sandbox or compliance certification. Optional cli
 Choose standalone skill installation **or** a native plugin for a given client. Installing both duplicates the skill. The standalone skill includes its Python helper and references but does not register lifecycle hooks.
 
 ```bash
-npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-dev/skills/prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --yes
+npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-dev/skills/prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
 ```
 
 Omit unwanted `--agent` options. Omit `--global` for a project installation. Restart clients if discovery does not refresh. For controlled rollouts, replace `main` in the URL with your reviewed release tag or full 40-character commit SHA. Short commit IDs are not supported by the Skills CLI.
 
-Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/OpenCode or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
+Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/OpenCode/Cursor or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
 
-Cursor is not certified for this development skill in this release. The operator skill's Cursor support is unchanged. This Codex marketplace entry intentionally packages dev only; use the separate operator installation when needed.
+The Codex and Cursor marketplace entries intentionally package dev only; use the separate operator installation when needed.
 
 ## Configure credentials
 
@@ -40,6 +40,7 @@ Follow [the terminal-only setup instructions](skills/prime-code-guardrails/refer
 | Claude plugin | `/prime-security-dev:prime-code-guardrails implement this change` |
 | Codex | `$prime-code-guardrails implement this change using our policies` |
 | OpenCode | `Use the prime-code-guardrails skill before implementing this change` |
+| Cursor | `/prime-code-guardrails implement this change using our policies` |
 
 The description also allows automatic skill selection, but selection is model-dependent. For team workflows, add a repository instruction in the client's supported rules file requiring `prime-code-guardrails` before code changes, or use the optional reminders below. Explicit invocation is the most direct way to request it.
 
@@ -56,7 +57,7 @@ This bundles the same skill plus session-start/resume/compaction reminders. Ordi
 
 ## Existing MCP connection
 
-The Claude plugin retains its `.mcp.json` connection to the Prime MCP server. See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. MCP authentication reads `PRIME_PAT_TOKEN` from the client environment, independently of the helper's token-file fallback. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
+The Claude and Cursor plugins retain the `.mcp.json` connection to the Prime MCP server. See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. MCP authentication reads `PRIME_PAT_TOKEN` from the client environment, independently of the helper's token-file fallback. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
 
 ## Optional Codex plugin
 
@@ -68,6 +69,10 @@ codex plugin add prime-security-dev@prime
 ```
 
 Start a new session and review/trust the plugin hooks through the client's hook trust flow. Installing a plugin does not automatically trust its hooks. The Codex manifest selects `hooks/codex.json`, which handles session-start/resume/compaction reminders without tracking tool calls. Standalone skills remain available where plugin hooks are unsupported.
+
+## Optional Cursor plugin
+
+The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Team admins can import this repository as a team marketplace (`.cursor-plugin/marketplace.json`). For a local install, copy the entire `plugins/prime-security-dev` directory to `~/.cursor/plugins/local/prime-security-dev`, then run **Developer: Reload Window**. Check that the plugin is listed under Customize. The hook makes no API requests and times out after five seconds.
 
 ## Optional OpenCode adapter
 
@@ -94,12 +99,12 @@ For the standalone skill:
 
 ```bash
 npx skills update prime-code-guardrails --global --yes
-npx skills remove prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --yes
+npx skills remove prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
 ```
 
 For a commit-pinned installation, `skills update` keeps that pin. To advance it, repeat the install command with the next reviewed full commit SHA.
 
-For Claude plugins, use `claude plugin update prime-security-dev@prime` or `claude plugin uninstall prime-security-dev@prime`. For Codex plugins, use the plugin manager to refresh/reinstall the reviewed version, or `codex plugin remove prime-security-dev@prime`. Remove the OpenCode wrapper when removing its skill. Restart affected clients.
+For Claude plugins, use `claude plugin update prime-security-dev@prime` or `claude plugin uninstall prime-security-dev@prime`. For Codex plugins, use the plugin manager to refresh/reinstall the reviewed version, or `codex plugin remove prime-security-dev@prime`. For a local Cursor plugin, delete `~/.cursor/plugins/local/prime-security-dev`. Remove the OpenCode wrapper when removing its skill. Restart affected clients.
 
 Removing the plugin/skill does not delete shared credentials, saved origin approvals, or task output files. Delete the Prime token file only when no other Prime integration needs it. Existing legacy `.claude/state/guardrails-loaded-*` markers are no longer consulted; they can be removed after upgrading. Older versions' `~/.local/state/prime-security` edit logs are no longer produced or consumed; remove them if no longer needed.
 

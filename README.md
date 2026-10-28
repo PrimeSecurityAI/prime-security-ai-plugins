@@ -58,7 +58,7 @@ The skill resolves credentials in this order:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process and hides input. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. Input is hidden. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
 bash -c '
@@ -135,7 +135,7 @@ claude mcp add --transport http --scope user prime https://api.primesec.ai/mcp -
 
 ### Codex
 
-The operator Codex plugin (see [Codex Plugins](#codex-plugins)) connects the server to `https://api.primesec.ai/mcp`. Without a plugin:
+The operator Codex plugin connects the server; see [Codex Plugins](#codex-plugins). Without a plugin:
 
 ```bash
 codex mcp add prime --url https://api.primesec.ai/mcp --bearer-token-env-var PRIME_PAT_TOKEN
@@ -255,18 +255,19 @@ Portable `prime-code-guardrails` skill for Claude Code, Codex, and OpenCode, wit
 ## Structure
 
 ```text
-.claude-plugin/marketplace.json
+.claude-plugin/marketplace.json      Claude marketplace
+.agents/plugins/marketplace.json     Codex marketplace
+.cursor-plugin/marketplace.json      Cursor marketplace
 plugins/
 |-- prime-security-operator/
-|   |-- .claude-plugin/plugin.json
+|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
 |   |-- .mcp.json
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
-    |-- .claude-plugin/plugin.json
+    |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
     |-- .mcp.json
-    |-- skills/prime-code-guardrails/SKILL.md
-    |-- hooks/hooks.json
-    `-- scripts/
+    |-- hooks/hooks.json codex.json cursor.json
+    `-- skills/prime-code-guardrails/
 ```
 
 ## License

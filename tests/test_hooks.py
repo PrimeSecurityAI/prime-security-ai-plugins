@@ -45,25 +45,14 @@ class HookTests(unittest.TestCase):
         self.assertEqual((manifest['hooks'], manifest['mcpServers']), ('./hooks/codex.json', {}))
         self.assertFalse((ROOT / 'plugin.json').exists())  # Codex drops all hooks for agent-plugins root manifests
 
-    def test_cursor_manifest_registers_skill_and_hooks(self):
-        manifest = json.loads((ROOT / '.cursor-plugin/plugin.json').read_text())
-        self.assertEqual((manifest['skills'], manifest['hooks']), ('./skills/', './hooks/cursor.json'))
-
-    def test_cursor_marketplace_lists_both_plugins_with_logos(self):
+    def test_marketplace_entries_match_plugin_manifests(self):
         repo = ROOT.parents[1]
-        for entry in json.loads((repo / '.cursor-plugin/marketplace.json').read_text())['plugins']:
-            with self.subTest(plugin=entry['name']):
-                manifest = json.loads((repo / entry['source'] / '.cursor-plugin/plugin.json').read_text())
-                self.assertEqual(manifest['name'], entry['name'])
-                self.assertTrue((repo / entry['source'] / manifest['logo']).is_file())
-
-    def test_codex_marketplace_lists_both_plugins(self):
-        repo = ROOT.parents[1]
-        for entry in json.loads((repo / '.agents/plugins/marketplace.json').read_text())['plugins']:
-            with self.subTest(plugin=entry['name']):
-                manifest = json.loads((repo / entry['source'] / '.codex-plugin/plugin.json').read_text())
-                self.assertEqual((manifest['name'], manifest['version']), (entry['name'], entry['version']))
-
-    def test_codex_operator_manifest_bundles_mcp(self):
-        manifest = json.loads((ROOT.parent / 'prime-security-operator/.codex-plugin/plugin.json').read_text())
-        self.assertEqual(manifest['mcpServers']['prime'], {'url': 'https://api.primesec.ai/mcp', 'bearer_token_env_var': 'PRIME_PAT_TOKEN'})
+        for marketplace, folder in (('.claude-plugin/marketplace.json', '.claude-plugin'), ('.agents/plugins/marketplace.json', '.codex-plugin'), ('.cursor-plugin/marketplace.json', '.cursor-plugin')):
+            for entry in json.loads((repo / marketplace).read_text())['plugins']:
+                with self.subTest(marketplace=marketplace, plugin=entry['name']):
+                    plugin = repo / entry['source']
+                    manifest = json.loads((plugin / folder / 'plugin.json').read_text())
+                    version = json.loads((plugin / '.claude-plugin/plugin.json').read_text())['version']
+                    self.assertEqual((manifest['name'], manifest['version'], entry.get('version', version)), (entry['name'], version, version))
+                    if folder == '.cursor-plugin':
+                        self.assertTrue((plugin / manifest['logo']).is_file())

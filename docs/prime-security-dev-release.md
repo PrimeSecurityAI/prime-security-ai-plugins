@@ -27,7 +27,6 @@ Verify empty-policy accounts separately from unavailable service responses. Chec
 
 ## Publication and rollback
 
-- Version metadata agrees across the Claude, Codex, and Cursor manifests and the Claude and Codex marketplace entries.
 - Supported API contracts and client interfaces have not drifted.
 - An approved brand icon is available if required by the target directory.
 - Installation from the final immutable release reference succeeds.

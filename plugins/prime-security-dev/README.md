@@ -70,7 +70,7 @@ Start a new session and review/trust the plugin hooks through the client's hook 
 
 ## Optional Cursor plugin
 
-The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Team admins can import this repository as a team marketplace (`.cursor-plugin/marketplace.json`). For a local install, copy the entire `plugins/prime-security-dev` directory to `~/.cursor/plugins/local/prime-security-dev`, then run **Developer: Reload Window**. Check that the plugin is listed under Customize. The hook makes no API requests and times out after five seconds.
+The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugins](../../README.md#cursor-plugins). The hook makes no API requests and times out after five seconds.
 
 ## Optional OpenCode adapter
 
@@ -113,7 +113,7 @@ Run from the repository root:
 ```bash
 python3 -m unittest discover -s tests -v
 node --test tests/opencode.test.mjs
-claude plugin validate plugins/prime-security-dev
+for p in plugins/prime-security-dev plugins/prime-security-operator .; do claude plugin validate "$p"; done
 ```
 
 See [the release checklist](../../docs/prime-security-dev-release.md) for required acceptance checks; the PR records results and tested versions. The presence of adapter code alone is not a claim of end-to-end client certification.

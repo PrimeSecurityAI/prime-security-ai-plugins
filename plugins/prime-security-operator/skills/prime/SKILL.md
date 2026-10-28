@@ -38,7 +38,7 @@ The login issues a regular 30-day PAT that appears under **Settings > Access > A
 
 If the login fails or the machine has no browser (SSH, CI, containers), stop before making an authenticated request. Tell the user to create a PAT in the Prime Security platform under **Settings > Access > API Token > Create Token**, then configure it in their own terminal. Do not offer to receive the token in chat.
 
-For Bash or zsh on macOS/Linux, provide this setup example. It explicitly launches Bash without changing the parent shell. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
+For Bash or zsh on macOS/Linux, provide this setup example. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
 bash -c '

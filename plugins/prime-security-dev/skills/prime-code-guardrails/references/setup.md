@@ -23,7 +23,7 @@ The helper resolves credentials on each invocation:
 
 The token file works across clients and does not depend on exports surviving between shell tool calls. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
 
-Paste this into **Bash or zsh** on macOS/Linux. It runs an isolated Bash process and saves the token without echoing it or recording it in shell history. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
+Paste this into **Bash or zsh** on macOS/Linux. Input is hidden and stays out of shell history. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
 bash -c '

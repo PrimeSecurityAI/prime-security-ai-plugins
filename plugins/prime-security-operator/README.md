@@ -50,7 +50,7 @@ Credential precedence is:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process with hidden input and restrictive permissions. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Paste this into Bash or zsh on macOS/Linux. Input is hidden. Empty or invalid input leaves the existing token unchanged:
 
 ```bash
 bash -c '

@@ -7,7 +7,7 @@ Use this checklist before publishing a release candidate. Record results, exact 
 - Python and Node suites pass on macOS and Linux, including the minimum supported Python version.
 - Complete policy artifacts are recoverable from private files; failed loads publish no artifact and existing destinations are not overwritten.
 - Schema, pagination, authentication, exact-origin approval, and repository-matching failure cases pass.
-- Claude skill/plugin/marketplace and portable manifest validation pass.
+- Claude skill/plugin/marketplace validation passes.
 - Installations include the entire skill folder and its helper/reference resources.
 
 ## Live acceptance
@@ -27,7 +27,7 @@ Verify empty-policy accounts separately from unavailable service responses. Chec
 
 ## Publication and rollback
 
-- Version metadata agrees across the Claude, Codex, portable manifest, and both marketplace entries.
+- Version metadata agrees across the Claude and Codex manifests and both marketplace entries.
 - Supported API contracts and client interfaces have not drifted.
 - An approved brand icon is available if required by the target directory.
 - Installation from the final immutable release reference succeeds.

@@ -35,3 +35,8 @@ class HookTests(unittest.TestCase):
         for name in ('hooks.json', 'codex.json'):
             hooks = json.loads((ROOT / 'hooks' / name).read_text())['hooks']
             self.assertEqual(set(hooks), {'SessionStart'})
+
+    def test_codex_manifest_registers_hooks_without_mcp(self):
+        manifest = json.loads((ROOT / '.codex-plugin/plugin.json').read_text())
+        self.assertEqual((manifest['hooks'], manifest['mcpServers']), ('./hooks/codex.json', {}))
+        self.assertFalse((ROOT / 'plugin.json').exists())  # Codex drops all hooks for agent-plugins root manifests

@@ -4,5 +4,6 @@
   "description": "Prime Security policy guidance with lifecycle reminders",
   "author": {"name": "Prime Security"},
   "skills": "./skills/",
-  "hooks": "./hooks/codex.json"
+  "hooks": "./hooks/codex.json",
+  "mcpServers": {}
 }

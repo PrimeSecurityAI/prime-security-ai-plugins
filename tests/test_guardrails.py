@@ -39,14 +39,14 @@ class GuardrailsTests(unittest.TestCase):
             token.parent.mkdir()
             token.write_text('file-token\n')
             token.chmod(0o600)
-            with patch.dict(os.environ, {'XDG_CONFIG_HOME': directory, 'PRIME_PAT_TOKEN': 'env-token'}):
+            with patch.dict(os.environ, {'XDG_CONFIG_HOME': directory, 'PRIME_PAT_TOKEN': ''}):
                 self.assertEqual(self.api.resolve_token(), 'file-token')
+                with patch.dict(os.environ, {'PRIME_PAT_TOKEN': 'env-token'}):
+                    self.assertEqual(self.api.resolve_token(), 'env-token')
                 if os.name == 'posix':
                     token.chmod(0o644)
                     with self.assertRaises(self.api.PrimeError):
                         self.api.resolve_token()
-                token.unlink()
-                self.assertEqual(self.api.resolve_token(), 'env-token')
 
     def test_origin_requires_https_and_exact_custom_opt_in(self):
         for url in ['http://api.primesec.ai', 'https://user:secret@api.primesec.ai',

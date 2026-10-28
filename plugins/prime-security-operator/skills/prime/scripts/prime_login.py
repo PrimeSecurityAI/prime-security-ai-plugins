@@ -85,8 +85,7 @@ def main() -> int:
     authorize_url = f"{api_url}/oauth/authorize?{urllib.parse.urlencode(params)}"
 
     print(f"Opening the browser to log in to Prime Security. If it does not open, visit:\n{authorize_url}", file=sys.stderr)
-    no_display = os.environ.get("SSH_CONNECTION") or (sys.platform.startswith("linux") and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
-    if no_display or not webbrowser.open(authorize_url):
+    if not webbrowser.open(authorize_url):
         server.server_close()
         print("Login failed: no browser could be opened. Create a token under Settings > Access > API Token instead.", file=sys.stderr)
         return 1

@@ -1,5 +1,4 @@
 """Execute the published shell examples with dummy tokens and isolated config."""
-import json
 import os
 from pathlib import Path
 import re
@@ -82,53 +81,3 @@ class SetupExamplesTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(token.read_text(), 'existing-dummy-token\n')
                 self.assertEqual(list(token.parent.iterdir()), [token])
-
-    def test_environment_mcp_launch_preserves_arguments_and_parent(self):
-        for shell in self.shells():
-            for client in ('claude', 'codex', 'opencode', 'cursor'):
-                with self.subTest(shell=shell, client=client), tempfile.TemporaryDirectory() as directory:
-                    token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
-                    script = (f'{client}() {{ printf "%s\\n" "$PRIME_PAT_TOKEN" "$@" > "$XDG_CONFIG_HOME/received"; }}\n'
-                              + example('README.md', 'prime_mcp()')
-                              + f'\nprime_mcp {client} --flag "project with spaces"\nprintf "PARENT:%s" "$PRIME_PAT_TOKEN"')
-                    for value, content in (('first-dummy-token', 'first-dummy-token\n'),
-                                           ('refreshed-dummy-token', 'refreshed-dummy-token\r\n'), ('stale-dummy-token', None)):
-                        token.unlink(missing_ok=True)
-                        if content is not None: token.write_text(content); token.chmod(0o600)
-                        result = self.run_example(shell, script, directory)
-                        self.assertEqual(result.returncode, 0, result.stderr)
-                        self.assertEqual((Path(directory) / 'received').read_text(), value + '\n--flag\nproject with spaces\n')
-                        self.assertEqual(result.stdout, 'PARENT:stale-dummy-token')
-                        self.assertEqual(result.stderr, '')
-
-    def test_environment_mcp_invalid_token_blocks_launch(self):
-        for shell in self.shells():
-            for content, mode in ((None, 0), ('', 0o600), ('\n', 0o600), (' \t\n', 0o600), ('bad token\n', 0o600),
-                                  ('bad\rtoken\n', 0o600), ('valid-dummy-token\n', 0o644)):
-                with self.subTest(shell=shell, content=repr(content), mode=oct(mode)), tempfile.TemporaryDirectory() as directory:
-                    token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
-                    if content is not None: token.write_text(content); token.chmod(mode)
-                    script = (('PRIME_PAT_TOKEN=\n' if content is None else '') + 'codex() { touch "$XDG_CONFIG_HOME/launched"; }\n'
-                              + example('README.md', 'prime_mcp()') + '\nprime_mcp codex')
-                    result = self.run_example(shell, script, directory)
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertFalse((Path(directory) / 'launched').exists())
-                    self.assertIn('Sign in or save a PAT', result.stderr)
-
-    def test_environment_mcp_function_pastes_into_interactive_zsh(self):
-        with tempfile.TemporaryDirectory() as directory:
-            token = Path(directory) / 'prime-security/token'; token.parent.mkdir(); token.write_text('dummy-token\n'); token.chmod(0o600)
-            script = (example('README.md', 'prime_mcp()')
-                      + 'codex() { printf "%s" "$PRIME_PAT_TOKEN" > "$XDG_CONFIG_HOME/received"; }\nprime_mcp codex\nexit\n')
-            env = {**os.environ, 'XDG_CONFIG_HOME': directory, 'HOME': directory}
-            result = subprocess.run(['zsh', '-f', '-i'], input=script, text=True, capture_output=True, env=env, timeout=10)
-            self.assertNotIn('event not found', result.stderr)
-            self.assertEqual((Path(directory) / 'received').read_text(), 'dummy-token')
-
-    def test_claude_docs_describe_file_headers_and_reconnect(self):
-        for doc in ('README.md', 'plugins/prime-security-operator/README.md', 'plugins/prime-security-dev/README.md'):
-            with self.subTest(doc=doc):
-                text = (ROOT / doc).read_text()
-                self.assertIn('headersHelper', text)
-                self.assertIn('2.1.312', text)
-                self.assertIn('/mcp', text)

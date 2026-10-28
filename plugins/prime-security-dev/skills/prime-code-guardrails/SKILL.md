@@ -18,7 +18,7 @@ policy_dir="$(mktemp -d)"
 python3 "<skill-directory>/scripts/prime_guardrails.py" --repo "<target-repository-directory>" --output "$policy_dir/guardrails.json"
 ```
 
-The helper reads `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`, falling back to `PRIME_PAT_TOKEN` only when that file does not exist. `PRIME_API_URL` defaults to `https://api.primesec.ai`. For missing credentials or custom origins, follow [setup.md](references/setup.md). Never request a PAT in chat, read its value into model context, or include it in a command argument.
+The helper reads `PRIME_PAT_TOKEN`, falling back to `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`. `PRIME_API_URL` defaults to `https://api.primesec.ai`. For missing credentials or custom origins, follow [setup.md](references/setup.md). Never request a PAT in chat, read its value into model context, or include it in a command argument.
 
 Proceed only when the command exits successfully and its receipt has `status: "loaded"`. The receipt reports `guardrail_count`, `repository_status`, and `output_path`; the complete JSON is saved at that path with owner-only permissions. Use a fresh private temporary directory outside the repository. Existing output files are never overwritten.
 
@@ -42,7 +42,7 @@ Before completing the task, review the final diff against the applicable policie
 
 The helper implements the documented read-only API contract described in [api-contract.md](references/api-contract.md). It validates pagination and required policy fields and returns no partial policy set on failure.
 
-For authentication errors, follow setup.md to re-run browser login or replace the PAT; the token file takes precedence over `PRIME_PAT_TOKEN`, so renew or delete a stale token file. For rate limits or network failures, report the issue and retry only when appropriate; avoid unbounded retries. For a schema/endpoint mismatch, fetch the relevant `/llm/guardrails` or `/llm/code-management` documentation **without credentials** and report the mismatch. Do not bypass validation or guess a new authenticated endpoint.
+For authentication errors, follow setup.md to re-run browser login or replace the PAT; remember that an expired environment token overrides the token file. For rate limits or network failures, report the issue and retry only when appropriate; avoid unbounded retries. For a schema/endpoint mismatch, fetch the relevant `/llm/guardrails` or `/llm/code-management` documentation **without credentials** and report the mismatch. Do not bypass validation or guess a new authenticated endpoint.
 
 ## Optional lifecycle integrations
 

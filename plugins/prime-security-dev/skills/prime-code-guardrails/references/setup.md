@@ -18,10 +18,10 @@ The standalone dev skill does **not** bundle the operator's login script. If it 
 
 The helper resolves credentials on each invocation:
 
-1. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`.
-2. Non-empty `PRIME_PAT_TOKEN` inherited by the agent process, only when the token file does not exist.
+1. Non-empty `PRIME_PAT_TOKEN` inherited by the agent process.
+2. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`.
 
-The token file works across clients and does not depend on exports surviving between shell tool calls. The helper reads the current file on each invocation, including after browser re-login. An unsafe or invalid token file is an error and never falls back to `PRIME_PAT_TOKEN`. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
+The token file works across clients and does not depend on exports surviving between shell tool calls. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
 
 Paste this into **Bash or zsh** on macOS/Linux. It runs an isolated Bash process and saves the token without echoing it or recording it in shell history. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
@@ -54,9 +54,7 @@ mv -f -- "$token_tmp" "$config_dir/token"
 '
 ```
 
-The Claude plugin's MCP `headersHelper` reads the shared file on each connection, falling back to `PRIME_PAT_TOKEN` only when the file does not exist. After login or PAT replacement, open `/mcp` and reconnect the Prime server; a missing token does not prevent using the skill to complete setup. This was validated with Claude Code **2.1.312**. The standalone dev skill includes neither an MCP connection nor operator browser login.
-
-Other MCP clients require a process environment token; see the [MCP launch instructions](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#environment-based-mcp-clients). Fully quit and relaunch those clients after replacement.
+If replacing an environment credential, restart the agent from the updated environment. A non-empty environment variable takes precedence over the token file, including an expired token.
 
 ## Custom API origin
 
@@ -86,7 +84,7 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 |---|---|
 | `missing_credentials`, `invalid_credentials` | Configure the PAT using hidden terminal input. |
 | `unsafe_token_file`, `unreadable_token_file` | Check ownership, regular-file status, and mode 600. |
-| `authentication_failed` | Re-run browser login or replace the PAT in the token file; delete a stale token file to use `PRIME_PAT_TOKEN`. Check account permissions for 403 errors. |
+| `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Check account permissions for 403 errors. |
 | `origin_not_approved`, `invalid_origin` | Correct the origin and explicitly approve a custom deployment. |
 | `invalid_approval_file` | Check the owner-only configuration directory, approval-file permissions, and JSON list of exact origins. |
 | `file_write_failed` | Choose a new output filename in an existing private directory. Existing files are never overwritten. |

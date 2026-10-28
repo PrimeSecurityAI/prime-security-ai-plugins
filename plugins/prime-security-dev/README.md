@@ -7,7 +7,7 @@ This is policy guidance, not a sandbox or compliance certification. Optional cli
 ## Requirements
 
 - Python 3.10+ available as `python3` in the client's execution environment.
-- A Prime Security credential saved by operator browser login or PAT setup, and HTTPS access to the configured Prime API.
+- A Prime Security PAT and HTTPS access to the configured Prime API.
 - Git for optional repository context.
 - Node.js 22.20+ and `npx` when using the Skills CLI.
 - Start with macOS/Linux for the optional adapters. Windows host integration has not been validated.
@@ -28,7 +28,7 @@ Cursor is not certified for this development skill in this release. The operator
 
 ## Configure credentials
 
-Follow [the credential setup instructions](skills/prime-code-guardrails/references/setup.md). Use a PAT or the operator skill's browser login; the standalone dev skill does not bundle browser login. Credentials resolve from the private shared token file, falling back to `PRIME_PAT_TOKEN` only when that file does not exist. Never paste a PAT into chat or put it in a repository.
+Follow [the terminal-only setup instructions](skills/prime-code-guardrails/references/setup.md). Credentials resolve from `PRIME_PAT_TOKEN`, then the private shared token file. Never paste a PAT into chat or put it in a repository.
 
 `PRIME_API_URL` is optional. Custom HTTPS origins support one-time invocation approval or saved trust for an exact origin, as described in the setup instructions. No client settings files are edited by the skill.
 
@@ -56,9 +56,7 @@ This bundles the same skill plus session-start/resume/compaction reminders. Ordi
 
 ## Existing MCP connection
 
-The Claude plugin's `.mcp.json` uses `headersHelper` to read the private shared token file on each connection, falling back to `PRIME_PAT_TOKEN` only when the file does not exist. This was validated with Claude Code **2.1.312**; update older clients before using this setup. Launch Claude normally without exporting a token. Missing credentials leave MCP disconnected while the skill remains available; save a PAT or complete browser login through the separately installed operator skill, then open `/mcp` and reconnect the Prime server. After re-login or replacing the PAT, reconnect through `/mcp` to read the new file without restarting Claude.
-
-See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. Other MCP clients require a process environment token and a full client restart after replacement; standalone skills can read the shared file directly. The guardrails helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
+The Claude plugin retains its `.mcp.json` connection to the Prime MCP server. See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. MCP authentication reads `PRIME_PAT_TOKEN` from the client environment, independently of the helper's token-file fallback. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
 
 ## Optional Codex plugin
 

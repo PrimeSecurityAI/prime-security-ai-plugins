@@ -4,9 +4,8 @@
       "type": "http",
       "url": "${PRIME_API_URL:-https://api.primesec.ai}/mcp",
       "headers": {
-        "Authorization": "Bearer ${PRIME_PAT_TOKEN:-}"
-      },
-      "headersHelper": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/prime_mcp_headers.py\""
+        "Authorization": "Bearer ${PRIME_PAT_TOKEN}"
+      }
     }
   }
 }

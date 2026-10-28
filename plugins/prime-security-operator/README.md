@@ -7,10 +7,10 @@ The portable `prime` Agent Skill interacts with Prime Security for security desi
 - Node.js 22.20.0 or later with `npx`
 - Claude Code, Codex, OpenCode, or Cursor
 - A Prime Security account
-- `python3` 3.9 or later for authenticated requests and the browser login
+- `python3` 3.9 or later for the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
 
-On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The Claude plugin's MCP connection reads the same private token file; see [MCP Server](#mcp-server).
+On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The plugin's MCP connection reads a PAT from `PRIME_PAT_TOKEN`; see [MCP Server](#mcp-server).
 
 ## Install
 
@@ -45,10 +45,10 @@ When no credential is configured, the skill runs `scripts/prime_login.py`. It op
 
 Credential precedence is:
 
-1. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
-2. `PRIME_PAT_TOKEN`, used only when the token file does not exist, for example a CI secret
+1. `PRIME_PAT_TOKEN`
+2. `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`
 
-An unsafe or invalid token file is reported as an error and never falls back to `PRIME_PAT_TOKEN`. `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`. Browser logins update the file, which the skill reads on its next authenticated request.
+`PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
 On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into chat. Paste this into Bash or zsh on macOS/Linux. It runs an isolated Bash process with hidden input and restrictive permissions. It removes surrounding spaces/tabs and a trailing carriage return, accepts a non-empty final line without a newline, and rejects empty or invalid input before replacing the existing token:
 
@@ -100,11 +100,11 @@ The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<
 
 The Claude marketplace plugin also connects Claude Code to the Prime MCP server through `.mcp.json`. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
 
-The plugin's `headersHelper` reads the private shared token file on every connection, and the plugin falls back to `PRIME_PAT_TOKEN` only when the file does not exist. This was validated with Claude Code **2.1.312**; update older clients before using this setup. Launch Claude normally without exporting a token.
+The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, for example from the token file the browser login writes:
 
-On first startup, a missing token leaves MCP disconnected while the skill remains available. Invoke `/prime-security-operator:prime` and complete browser login, or save a PAT above. Then open `/mcp`, select the Prime server, and reconnect. After re-login or replacing the PAT, repeat `/mcp` reconnect to read the new file without restarting Claude.
-
-Other MCP clients require a token in the client process environment; use the [process-scoped launch instructions](../../README.md#environment-based-mcp-clients). Fully quit and relaunch those clients after re-login so their MCP connection uses the new token.
+```bash
+export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
+```
 
 ## Pre-Approving Network Access
 

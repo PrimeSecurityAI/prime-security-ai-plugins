@@ -56,3 +56,14 @@ class HookTests(unittest.TestCase):
                 manifest = json.loads((repo / entry['source'] / '.cursor-plugin/plugin.json').read_text())
                 self.assertEqual(manifest['name'], entry['name'])
                 self.assertTrue((repo / entry['source'] / manifest['logo']).is_file())
+
+    def test_codex_marketplace_lists_both_plugins(self):
+        repo = ROOT.parents[1]
+        for entry in json.loads((repo / '.agents/plugins/marketplace.json').read_text())['plugins']:
+            with self.subTest(plugin=entry['name']):
+                manifest = json.loads((repo / entry['source'] / '.codex-plugin/plugin.json').read_text())
+                self.assertEqual((manifest['name'], manifest['version']), (entry['name'], entry['version']))
+
+    def test_codex_operator_manifest_bundles_mcp(self):
+        manifest = json.loads((ROOT.parent / 'prime-security-operator/.codex-plugin/plugin.json').read_text())
+        self.assertEqual(manifest['mcpServers']['prime'], {'url': 'https://api.primesec.ai/mcp', 'bearer_token_env_var': 'PRIME_PAT_TOKEN'})

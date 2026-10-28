@@ -91,21 +91,24 @@ class SetupExamplesTests(unittest.TestCase):
                     script = (f'{client}() {{ printf "%s\\n" "$PRIME_PAT_TOKEN" "$@" > "$XDG_CONFIG_HOME/received"; }}\n'
                               + example('README.md', 'prime_mcp()')
                               + f'\nprime_mcp {client} --flag "project with spaces"\nprintf "PARENT:%s" "$PRIME_PAT_TOKEN"')
-                    for value in ('first-dummy-token', 'refreshed-dummy-token'):
-                        token.write_text(value + '\n')
+                    for value, content in (('first-dummy-token', 'first-dummy-token\n'),
+                                           ('refreshed-dummy-token', 'refreshed-dummy-token\r\n'), ('stale-dummy-token', None)):
+                        token.unlink(missing_ok=True)
+                        if content is not None: token.write_text(content); token.chmod(0o600)
                         result = self.run_example(shell, script, directory)
                         self.assertEqual(result.returncode, 0, result.stderr)
                         self.assertEqual((Path(directory) / 'received').read_text(), value + '\n--flag\nproject with spaces\n')
-                        self.assertIn('PARENT:stale-dummy-token', result.stdout)
-                        self.assertNotIn(value, result.stdout + result.stderr)
+                        self.assertEqual(result.stdout, 'PARENT:stale-dummy-token')
+                        self.assertEqual(result.stderr, '')
 
     def test_environment_mcp_invalid_token_blocks_launch(self):
         for shell in self.shells():
-            for content in (None, '', '\n', ' \t\n', 'bad token\n', 'bad-token\r\n'):
-                with self.subTest(shell=shell, content=repr(content)), tempfile.TemporaryDirectory() as directory:
+            for content, mode in ((None, 0), ('', 0o600), ('\n', 0o600), (' \t\n', 0o600), ('bad token\n', 0o600),
+                                  ('bad\rtoken\n', 0o600), ('valid-dummy-token\n', 0o644)):
+                with self.subTest(shell=shell, content=repr(content), mode=oct(mode)), tempfile.TemporaryDirectory() as directory:
                     token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
-                    if content is not None: token.write_text(content)
-                    script = ('codex() { touch "$XDG_CONFIG_HOME/launched"; }\n'
+                    if content is not None: token.write_text(content); token.chmod(mode)
+                    script = (('PRIME_PAT_TOKEN=\n' if content is None else '') + 'codex() { touch "$XDG_CONFIG_HOME/launched"; }\n'
                               + example('README.md', 'prime_mcp()') + '\nprime_mcp codex')
                     result = self.run_example(shell, script, directory)
                     self.assertNotEqual(result.returncode, 0)
@@ -114,7 +117,7 @@ class SetupExamplesTests(unittest.TestCase):
 
     def test_environment_mcp_function_pastes_into_interactive_zsh(self):
         with tempfile.TemporaryDirectory() as directory:
-            token = Path(directory) / 'prime-security/token'; token.parent.mkdir(); token.write_text('dummy-token\n')
+            token = Path(directory) / 'prime-security/token'; token.parent.mkdir(); token.write_text('dummy-token\n'); token.chmod(0o600)
             script = (example('README.md', 'prime_mcp()')
                       + 'codex() { printf "%s" "$PRIME_PAT_TOKEN" > "$XDG_CONFIG_HOME/received"; }\nprime_mcp codex\nexit\n')
             env = {**os.environ, 'XDG_CONFIG_HOME': directory, 'HOME': directory}

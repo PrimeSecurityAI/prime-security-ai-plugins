@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+AUTH_HEADER = ROOT / 'plugins/prime-security-operator/skills/prime/scripts/prime_auth_header.py'
 SCRIPTS = [ROOT / 'plugins' / plugin / 'scripts/prime_mcp_headers.py' for plugin in ('prime-security-dev', 'prime-security-operator')]
 
 
@@ -58,3 +59,18 @@ class McpHeaderTests(unittest.TestCase):
             config = json.loads((plugin / '.mcp.json').read_text())['mcpServers']['prime']
             self.assertEqual(config['headers'], {'Authorization': 'Bearer ${PRIME_PAT_TOKEN:-}'})
             self.assertIn('${CLAUDE_PLUGIN_ROOT}/' + str(script.relative_to(plugin)), config['headersHelper'])
+
+    def test_skill_auth_header_prefers_private_file_then_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            token = Path(directory) / 'prime-security/token'; token.parent.mkdir()
+            for content, mode, env, code, stdout in (('file-token\r\n', 0o600, 'env-token', 0, 'Authorization: Bearer file-token\n'),
+                                                     ('file-token\n', 0o644, 'env-token', 1, ''),
+                                                     (None, 0, 'env-token', 0, 'Authorization: Bearer env-token\n'),
+                                                     (None, 0, '', 2, '')):
+                with self.subTest(content=repr(content), mode=oct(mode), env=env):
+                    token.unlink(missing_ok=True)
+                    if content is not None: token.write_text(content); token.chmod(mode)
+                    result = subprocess.run([sys.executable, str(AUTH_HEADER)], capture_output=True, text=True,
+                                            env={**os.environ, 'XDG_CONFIG_HOME': directory, 'PRIME_PAT_TOKEN': env})
+                    self.assertEqual((result.returncode, result.stdout), (code, stdout))
+                    self.assertNotIn('-token', result.stderr)

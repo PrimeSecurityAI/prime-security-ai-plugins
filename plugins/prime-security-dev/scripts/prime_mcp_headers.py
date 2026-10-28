@@ -23,7 +23,7 @@ def main():
         print('{}')
         return 0
     except (OSError, ValueError, UnicodeError):
-        print('Prime token file is unsafe or invalid. Sign in with the prime skill or save a PAT in the private token file (mode 600), then reconnect Prime in /mcp.', file=sys.stderr)
+        print('Prime token file is unsafe or invalid. Replace it with a valid PAT in a private file (mode 600), or delete it to use PRIME_PAT_TOKEN, then reconnect Prime in /mcp.', file=sys.stderr)
         # An empty header replaces the static environment header, so a broken file never falls back to another credential.
         print(json.dumps({'Authorization': ''}))
         return 0

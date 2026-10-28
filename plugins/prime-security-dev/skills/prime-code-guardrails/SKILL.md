@@ -42,7 +42,7 @@ Before completing the task, review the final diff against the applicable policie
 
 The helper implements the documented read-only API contract described in [api-contract.md](references/api-contract.md). It validates pagination and required policy fields and returns no partial policy set on failure.
 
-For authentication errors, follow setup.md to re-run browser login or replace the PAT; remember that an expired environment token overrides the token file. For rate limits or network failures, report the issue and retry only when appropriate; avoid unbounded retries. For a schema/endpoint mismatch, fetch the relevant `/llm/guardrails` or `/llm/code-management` documentation **without credentials** and report the mismatch. Do not bypass validation or guess a new authenticated endpoint.
+For authentication errors, follow setup.md to re-run browser login or replace the PAT; the token file takes precedence over `PRIME_PAT_TOKEN`, so renew or delete a stale token file. For rate limits or network failures, report the issue and retry only when appropriate; avoid unbounded retries. For a schema/endpoint mismatch, fetch the relevant `/llm/guardrails` or `/llm/code-management` documentation **without credentials** and report the mismatch. Do not bypass validation or guess a new authenticated endpoint.
 
 ## Optional lifecycle integrations
 

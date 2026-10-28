@@ -7,7 +7,7 @@ The portable `prime` Agent Skill interacts with Prime Security for security desi
 - Node.js 22.20.0 or later with `npx`
 - Claude Code, Codex, OpenCode, or Cursor
 - A Prime Security account
-- `python3` 3.9 or later for the browser login
+- `python3` 3.9 or later for authenticated requests and the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
 
 On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The Claude plugin's MCP connection reads the same private token file; see [MCP Server](#mcp-server).

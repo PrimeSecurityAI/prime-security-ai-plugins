@@ -158,7 +158,7 @@ class Client:
             code = error.code
             error.close()
             if code in (401, 403):
-                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; re-run browser login or configure a valid PAT in your terminal. See references/setup.md; an environment token overrides the token file.') from None
+                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; re-run browser login or replace the PAT in the token file, or delete a stale token file to use PRIME_PAT_TOKEN. See references/setup.md.') from None
             if code == 429:
                 raise PrimeError('rate_limited', 'Prime rate limit reached; retry later.') from None
             if 300 <= code < 400:

@@ -86,7 +86,7 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 |---|---|
 | `missing_credentials`, `invalid_credentials` | Configure the PAT using hidden terminal input. |
 | `unsafe_token_file`, `unreadable_token_file` | Check ownership, regular-file status, and mode 600. |
-| `authentication_failed` | Re-run browser login or replace the PAT. Check account permissions for 403 errors. |
+| `authentication_failed` | Re-run browser login or replace the PAT in the token file; delete a stale token file to use `PRIME_PAT_TOKEN`. Check account permissions for 403 errors. |
 | `origin_not_approved`, `invalid_origin` | Correct the origin and explicitly approve a custom deployment. |
 | `invalid_approval_file` | Check the owner-only configuration directory, approval-file permissions, and JSON list of exact origins. |
 | `file_write_failed` | Choose a new output filename in an existing private directory. Existing files are never overwritten. |

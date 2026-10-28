@@ -15,7 +15,7 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 
 - A Prime Security account.
 - HTTPS access to the Prime Security API.
-- For the `prime` skill's browser login: `python3` 3.9 or later.
+- For the `prime` skill's authenticated requests and browser login: `python3` 3.9 or later.
 - For the Skills CLI installation only: Node.js 22.20.0 or later with `npx`, and HTTPS access to GitHub and npm.
 
 On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. Skills, the development guardrails helper, and Claude Code plugin MCP connections all read the shared token file below, falling back to `PRIME_PAT_TOKEN` only when that file does not exist. Other MCP clients have separate setup below.
@@ -129,14 +129,22 @@ Without a plugin, configure Claude Code as an environment-based client below.
 
 The MCP configurations below read `PRIME_PAT_TOKEN` from the client process. They cannot read the shared file directly, and the client and its shell tools can read the environment token. Portable skills alone use the file without this setup.
 
-After saving a token, paste this function into Bash or zsh. It reads the current file each time, supplies the token only to the launched client, and forwards every client argument unchanged:
+After saving a token, paste this function into Bash or zsh. It reads the current token file each time, uses `PRIME_PAT_TOKEN` only when no file exists, supplies the token only to the launched client, and forwards every client argument unchanged:
 
 ```bash
 prime_mcp() (
-  prime_pat=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token" 2>/dev/null)
+  prime_file="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token"
+  prime_pat=$PRIME_PAT_TOKEN
+  if [ -e "$prime_file" ] || [ -L "$prime_file" ]; then
+    prime_pat=
+    case $(ls -ln "$prime_file") in
+      -r[w-]-------*) [ -O "$prime_file" ] && prime_pat=$(cat "$prime_file") ;;
+    esac
+  fi
+  prime_pat=${prime_pat%"$(printf '\r')"}
   case "$prime_pat" in
     ""|*[[:space:][:cntrl:]]*)
-      printf 'No valid Prime token. Sign in or save a PAT first.\n' >&2
+      printf 'No valid Prime token. Sign in or save a PAT in a private token file (mode 600) first.\n' >&2
       exit 1
       ;;
   esac

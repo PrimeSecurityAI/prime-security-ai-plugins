@@ -48,4 +48,11 @@ class HookTests(unittest.TestCase):
     def test_cursor_manifest_registers_skill_and_hooks(self):
         manifest = json.loads((ROOT / '.cursor-plugin/plugin.json').read_text())
         self.assertEqual((manifest['skills'], manifest['hooks']), ('./skills/', './hooks/cursor.json'))
-        self.assertTrue((ROOT / manifest['logo']).is_file())
+
+    def test_cursor_marketplace_lists_both_plugins_with_logos(self):
+        repo = ROOT.parents[1]
+        for entry in json.loads((repo / '.cursor-plugin/marketplace.json').read_text())['plugins']:
+            with self.subTest(plugin=entry['name']):
+                manifest = json.loads((repo / entry['source'] / '.cursor-plugin/plugin.json').read_text())
+                self.assertEqual(manifest['name'], entry['name'])
+                self.assertTrue((repo / entry['source'] / manifest['logo']).is_file())

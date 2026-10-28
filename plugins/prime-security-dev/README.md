@@ -24,7 +24,7 @@ Omit unwanted `--agent` options. Omit `--global` for a project installation. Res
 
 Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/OpenCode/Cursor or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
 
-The Codex and Cursor marketplace entries intentionally package dev only; use the separate operator installation when needed.
+The Codex marketplace entry intentionally packages dev only; use the separate operator installation when needed.
 
 ## Configure credentials
 

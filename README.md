@@ -223,7 +223,11 @@ claude plugin install prime-security-operator@prime
 
 Inside Claude Code, the equivalents are `/plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins` and `/plugin install prime-security-operator@prime`.
 
-The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code. For development guardrails across Claude Code, Codex, OpenCode, and Cursor, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
+The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code.
+
+## Cursor Plugins
+
+Both plugins also ship Cursor manifests, and `.cursor-plugin/marketplace.json` lists them. Each bundles its skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` from the environment that starts Cursor. Team admins can import this repository as a team marketplace. For a local install, copy the plugin directory (for example `plugins/prime-security-operator`) to `~/.cursor/plugins/local/<plugin-name>`, then run **Developer: Reload Window**. Install a plugin **or** the Skills CLI skill for Cursor, not both. For development guardrails across Claude Code, Codex, OpenCode, and Cursor, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
 
 ## Plugins
 

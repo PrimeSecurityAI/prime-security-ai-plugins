@@ -1,10 +1,10 @@
 # Prime Security Operator
 
-This plugin distributes the cross-client `prime` Agent Skill and preserves Claude marketplace compatibility.
+`plugins/prime-security-operator` distributes the cross-client `prime` Agent Skill and preserves Claude marketplace compatibility.
 
 ## Maintenance Rules
 
-- Keep `skills/prime/SKILL.md` as the only canonical skill. Do not add a root `skills/prime` copy or `install.sh`.
+- Keep `plugins/prime-security-operator/skills/prime/SKILL.md` as the only canonical skill. Do not add a root `skills/prime` copy or `install.sh`.
 - Keep the skill frontmatter limited to standard Agent Skills fields. Do not add Claude-only tools, settings paths, or interaction assumptions.
 - Keep credential precedence as `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token`, then `PRIME_PAT_TOKEN` only when the file does not exist. Claude Code strips credential variables from plugin `headersHelper` processes, so the plugin MCP connection can only implement this order with the file taking precedence.
 - Never instruct users to paste a PAT into chat, and never print or log a token.

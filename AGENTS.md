@@ -1,6 +1,6 @@
 # Prime Security Operator
 
-`plugins/prime-security-operator` distributes the cross-client `prime` Agent Skill and preserves Claude marketplace compatibility.
+`plugins/prime-security-operator` distributes the cross-client `prime` Agent Skill as a plugin with the Prime MCP server, and as a standalone skill for clients without plugin support.
 
 ## Maintenance Rules
 
@@ -14,4 +14,4 @@
 
 ## Distribution
 
-The primary installation uses the Skills CLI URL documented in `README.md`. The Claude marketplace plugin is a backward-compatible alternative, not an additional installation step.
+The primary installation is the plugin for each client that supports one (Claude Code, Codex, GitHub Copilot CLI, Cursor; for the dev plugin also OpenCode and Pi), as documented in `README.md`. The Skills CLI installation is the fallback for other clients. Document one installation per client, never both.

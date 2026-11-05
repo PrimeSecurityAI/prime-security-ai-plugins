@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -9,8 +10,8 @@ SCRIPT = ROOT / 'skills/prime-code-guardrails/scripts/prime_hooks.py'
 
 
 class HookTests(unittest.TestCase):
-    def invoke(self, payload):
-        return subprocess.run([sys.executable, str(SCRIPT), 'reminder'],
+    def invoke(self, payload, *args):
+        return subprocess.run([sys.executable, str(SCRIPT), 'reminder', *args],
                               input=json.dumps(payload), text=True, capture_output=True)
 
     def test_start_resume_and_compaction_provide_context(self):
@@ -36,7 +37,8 @@ class HookTests(unittest.TestCase):
         self.assertNotIn('private-payload', result.stdout + result.stderr)
 
     def test_manifests_only_register_session_reminders(self):
-        for name, event in (('hooks.json', 'SessionStart'), ('codex.json', 'SessionStart'), ('cursor.json', 'sessionStart')):
+        for name, event in (('hooks.json', 'SessionStart'), ('codex.json', 'SessionStart'), ('cursor.json', 'sessionStart'),
+                            ('copilot.json', 'sessionStart')):
             hooks = json.loads((ROOT / 'hooks' / name).read_text())['hooks']
             self.assertEqual(set(hooks), {event})
 
@@ -56,3 +58,35 @@ class HookTests(unittest.TestCase):
                     self.assertEqual((manifest['name'], manifest['version'], entry.get('version', version)), (entry['name'], version, version))
                     if folder == '.cursor-plugin':
                         self.assertTrue((plugin / manifest['logo']).is_file())
+
+    def test_copilot_session_start_gets_top_level_context(self):
+        for source in ('startup', 'resume', 'new'):
+            with self.subTest(source=source):
+                result = self.invoke({'sessionId': 's', 'timestamp': 1, 'cwd': '/tmp', 'source': source},
+                                     '--format', 'copilot')
+                output = json.loads(result.stdout)
+                self.assertEqual(set(output), {'additionalContext'})
+                self.assertIn('prime-code-guardrails', output['additionalContext'])
+
+    def test_unknown_arguments_are_advisory(self):
+        result = self.invoke({'hook_event_name': 'SessionStart'}, '--format', 'other')
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {})
+
+    def test_copilot_manifest_registers_hooks_without_mcp(self):
+        manifest = json.loads((ROOT / '.github/plugin/plugin.json').read_text())
+        version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
+        self.assertEqual((manifest['name'], manifest['version']), ('prime-security-dev', version))
+        self.assertEqual((manifest['skills'], manifest['hooks'], manifest['mcpServers']),
+                         ('./skills/', './hooks/copilot.json', {}))
+        self.assertEqual(json.loads((ROOT / 'hooks/copilot.json').read_text())['version'], 1)
+
+    def test_copilot_hook_command_finds_the_script(self):
+        command = json.loads((ROOT / 'hooks/copilot.json').read_text())['hooks']['sessionStart'][0]['bash']
+        payload = json.dumps({'sessionId': 's', 'source': 'startup'})
+        cases = [({variable: str(ROOT)}, '/') for variable in ('PLUGIN_ROOT', 'COPILOT_PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT')]
+        for extra_env, cwd in cases + [({}, str(ROOT))]:
+            with self.subTest(env=extra_env, cwd=cwd):
+                result = subprocess.run(['bash', '-c', command], input=payload, cwd=cwd, text=True,
+                                        capture_output=True, env={'PATH': os.environ['PATH'], **extra_env})
+                self.assertIn('prime-code-guardrails', json.loads(result.stdout)['additionalContext'])

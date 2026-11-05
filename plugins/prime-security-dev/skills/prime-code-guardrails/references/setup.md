@@ -12,7 +12,7 @@ python3 "<installed-prime-skill-directory>/scripts/prime_login.py"
 
 Use the same `PRIME_API_URL` for login and guardrail requests. Complete the browser authorization yourself. Login tokens expire after 30 days; re-run this command to renew them. A 403 can also mean missing permissions, which re-login alone does not fix.
 
-The standalone dev skill does **not** bundle the operator's login script. If it is absent, install the operator skill using the [repository installation guide](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#install-the-portable-skill), or run `plugins/prime-security-operator/skills/prime/scripts/prime_login.py` from a reviewed checkout of that repository. Use the PAT setup below if you do not want the operator skill or cannot open a browser. Do not assume a sibling operator directory exists in an installed dev skill.
+The standalone dev skill does **not** bundle the operator's login script. If it is absent, install the operator plugin or skill using the [repository installation guide](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#plugin-or-skill), or run `plugins/prime-security-operator/skills/prime/scripts/prime_login.py` from a reviewed checkout of that repository. Use the PAT setup below if you do not want the operator skill or cannot open a browser. Do not assume a sibling operator directory exists in an installed dev skill.
 
 ## Credential resolution and terminal PAT setup
 

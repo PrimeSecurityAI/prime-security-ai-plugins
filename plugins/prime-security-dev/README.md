@@ -62,7 +62,7 @@ Copilot reads `.github/plugin/plugin.json`, which registers the skill and `hooks
 
 ### Cursor
 
-The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugins](../../README.md#cursor-plugins).
+The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugin](../../README.md#cursor-plugin).
 
 ### OpenCode
 

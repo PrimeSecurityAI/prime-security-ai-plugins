@@ -1,6 +1,6 @@
 # prime-security-dev
 
-Load your organization's security guardrails before coding in **Claude Code, Codex, OpenCode, or Cursor**. The portable `prime-code-guardrails` skill fetches current policies and optional repository architecture context, then guides implementation and diff review.
+Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The portable `prime-code-guardrails` skill fetches current policies and optional repository architecture context, then guides implementation and diff review.
 
 This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
 
@@ -12,17 +12,91 @@ This is policy guidance, not a sandbox or compliance certification. Optional cli
 - Node.js 22.20+ and `npx` when using the Skills CLI.
 - Start with macOS/Linux for the optional adapters. Windows host integration has not been validated.
 
-## Install the portable skill
+## Plugin or skill?
 
-Choose standalone skill installation **or** a native plugin for a given client. Installing both duplicates the skill. The standalone skill includes its Python helper and references but does not register lifecycle hooks.
+Install the **plugin** for your client. It contains the `prime-code-guardrails` skill plus a reminder that the client injects at session start, so the agent loads your guardrails before changing code without being asked.
+
+The **skill alone** does not run automatically. The agent uses it only when it decides the skill is relevant or when you invoke it explicitly. Use the skill alone only for clients without a plugin, such as Copilot agent mode in IDEs, or when you will always invoke it yourself.
+
+| Client | Plugin reminder | Skill only |
+|---|---|---|
+| Claude Code | Session start, resume, compaction | Yes |
+| Codex | Session start, resume, compaction | Yes |
+| GitHub Copilot CLI | Session start and resume | Yes (also IDE agent mode) |
+| Cursor | Session start | Yes |
+| OpenCode 2.x | Every model request | Yes |
+| Pi | Every agent run | Yes |
+
+Reminders make no API requests and do not load policies; hook commands time out after five seconds. Ordinary user prompts do not add transcript reminders.
+
+Install the plugin **or** the skill for a given client, not both; both together duplicate the skill.
+
+## Install the plugin
+
+### Claude Code
 
 ```bash
-npx skills add https://github.com/PrimeSecurityAI/prime-security-ai-plugins/tree/main/plugins/prime-security-dev/skills/prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+claude plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+claude plugin install prime-security-dev@prime
 ```
 
-Omit unwanted `--agent` options. Omit `--global` for a project installation. Restart clients if discovery does not refresh. For controlled rollouts, replace `main` in the URL with your reviewed release tag or full 40-character commit SHA. Short commit IDs are not supported by the Skills CLI.
+### Codex
 
-Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/OpenCode/Cursor or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
+For Codex CLI versions with plugin support:
+
+```bash
+codex plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+codex plugin add prime-security-dev@prime
+```
+
+Start a new session and review/trust the plugin hooks through the client's hook trust flow. Installing a plugin does not automatically trust its hooks. The Codex manifest selects `hooks/codex.json`.
+
+### GitHub Copilot CLI
+
+```bash
+copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+copilot plugin install prime-security-dev@prime
+```
+
+Copilot reads `.github/plugin/plugin.json`, which registers the skill and `hooks/copilot.json` without an MCP server. Copilot has no post-compaction hook event, so after a long session invoke the skill again if policy text was compacted away.
+
+### Cursor
+
+The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugins](../../README.md#cursor-plugins).
+
+### OpenCode
+
+The adapter targets OpenCode 2.x (`@opencode/cli`); OpenCode 1.x plugins use a different API and are not supported. OpenCode 2.x has no plugin marketplace, so install the skill, then add a local plugin file.
+
+1. Install the skill: `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime-code-guardrails --global --agent opencode --yes`.
+2. Create `~/.config/opencode/plugins/prime-security-dev.js` (or the corresponding directory under your `XDG_CONFIG_HOME`):
+
+   ```javascript
+   export { default } from "/absolute/path/to/prime-code-guardrails/adapters/opencode.js";
+   ```
+
+   Replace the absolute path with the installed skill location, normally `~/.agents/skills/prime-code-guardrails` expanded to an absolute path. Preserve the skill's `adapters/package.json`.
+3. Restart OpenCode.
+
+The adapter is self-contained JavaScript with no npm dependencies, and it does not run Python at startup. It uses the `context` session hook to add one reminder to each freshly built system prompt, including tool continuations and the first request after compaction, without appending messages to the conversation history.
+
+### Pi
+
+```bash
+pi install git:github.com/PrimeSecurityAI/prime-security-ai-plugins
+```
+
+The repository root is a Pi package that loads the `prime-code-guardrails` skill and `pi/extension.js`. The extension adds a `prime_guardrails` system-prompt section before each agent run while the skill is enabled. Pi patches only changed sections, so the reminder does not invalidate the prompt cache. Append `@<tag>` or `@<full-commit-sha>` to pin a reviewed release, and add `-l` for a project installation. Do not also install the skill for Pi with `npx skills`.
+
+## Install the skill only
+
+```bash
+npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime-code-guardrails --global
+```
+
+Without `--agent`, the Skills CLI detects installed clients and asks which to use. For one client, add `--agent <client> --yes` with `claude-code`, `codex`, `github-copilot`, `cursor`, `opencode`, or `pi`; repeat `--agent` for several. Omit `--global` for a project installation. Restart clients if discovery does not refresh. For controlled rollouts, pin a reviewed release tag or full 40-character commit SHA: `PrimeSecurityAI/prime-security-ai-plugins#<sha>`. Short commit IDs are not supported by the Skills CLI.
+
+Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory to `~/.agents/skills/prime-code-guardrails` for Codex/Copilot/OpenCode/Cursor/Pi or `~/.claude/skills/prime-code-guardrails` for Claude. Keep one canonical copy when sharing across clients. Do not copy only `SKILL.md`.
 
 ## Configure credentials
 
@@ -37,52 +111,18 @@ Follow [the terminal-only setup instructions](skills/prime-code-guardrails/refer
 | Claude standalone | `/prime-code-guardrails implement this change using our policies` |
 | Claude plugin | `/prime-security-dev:prime-code-guardrails implement this change` |
 | Codex | `$prime-code-guardrails implement this change using our policies` |
+| GitHub Copilot | `/prime-code-guardrails implement this change using our policies` |
 | OpenCode | `Use the prime-code-guardrails skill before implementing this change` |
 | Cursor | `/prime-code-guardrails implement this change using our policies` |
+| Pi | `/skill:prime-code-guardrails implement this change using our policies` |
 
-The description also allows automatic skill selection, but selection is model-dependent. For team workflows, add a repository instruction in the client's supported rules file requiring `prime-code-guardrails` before code changes, or use the optional reminders below. Explicit invocation is the most direct way to request it.
+The description also allows automatic skill selection, but selection is model-dependent. The plugin reminders make selection reliable; without a plugin, add a repository instruction in the client's supported rules file requiring `prime-code-guardrails` before code changes, or invoke it explicitly.
 
 The agent saves complete policy JSON to a private temporary file using `--output`, reads all policies in bounded chunks, applies relevant policies, and reports the titles that influenced its changes. Follow-up messages reuse policies within the ongoing task. It reloads for a new independent task, repository/account change, or loss of policy context. Empty policies and failed loading are different outcomes; failed loading never authorizes proceeding as if there were no requirements.
 
-## Optional Claude plugin
-
-```bash
-claude plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
-claude plugin install prime-security-dev@prime
-```
-
-This bundles the same skill plus session-start/resume/compaction reminders. Ordinary user prompts do not add reminders. Hook timeouts are five seconds. No API requests run inside hooks.
-
-## Existing MCP connection
+## MCP connection
 
 The Claude and Cursor plugins retain the `.mcp.json` connection to the Prime MCP server. See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. MCP authentication reads `PRIME_PAT_TOKEN` from the client environment, independently of the helper's token-file fallback. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
-
-## Optional Codex plugin
-
-For Codex CLI versions with plugin support:
-
-```bash
-codex plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
-codex plugin add prime-security-dev@prime
-```
-
-Start a new session and review/trust the plugin hooks through the client's hook trust flow. Installing a plugin does not automatically trust its hooks. The Codex manifest selects `hooks/codex.json`, which handles session-start/resume/compaction reminders without tracking tool calls. Standalone skills remain available where plugin hooks are unsupported.
-
-## Optional Cursor plugin
-
-The plugin bundles the same skill plus a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugins](../../README.md#cursor-plugins). The hook makes no API requests and times out after five seconds.
-
-## Optional OpenCode adapter
-
-After installing the standalone skill, add a small local plugin file at `~/.config/opencode/plugins/prime-security-dev.js` (or the corresponding directory under your `XDG_CONFIG_HOME`):
-
-```javascript
-export { PrimeSecurityDev } from "/absolute/path/to/prime-code-guardrails/adapters/opencode.js";
-```
-
-Replace the absolute path with the canonical installed skill location, normally `~/.agents/skills/prime-code-guardrails` expanded to an absolute path. Preserve the skill's `adapters/package.json`. The adapter is self-contained JavaScript; it does not run Python at startup. Python is required when the agent runs the API helper. Restart OpenCode.
-
-The adapter includes one reminder in each freshly built OpenCode system prompt, including tool continuations and post-compaction requests. It does not append repeated messages to the conversation history. These experimental APIs require revalidation when upgrading OpenCode. No npm runtime dependencies are required.
 
 ## Data and limitations
 
@@ -97,12 +137,25 @@ For the standalone skill:
 
 ```bash
 npx skills update prime-code-guardrails --global --yes
-npx skills remove prime-code-guardrails --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+npx skills remove prime-code-guardrails --global
 ```
+
+`remove` asks which clients to remove the skill from; add `--agent <client> --yes` to choose them non-interactively.
 
 For a commit-pinned installation, `skills update` keeps that pin. To advance it, repeat the install command with the next reviewed full commit SHA.
 
-For Claude plugins, use `claude plugin update prime-security-dev@prime` or `claude plugin uninstall prime-security-dev@prime`. For Codex plugins, use the plugin manager to refresh/reinstall the reviewed version, or `codex plugin remove prime-security-dev@prime`. For a local Cursor plugin, delete `~/.cursor/plugins/local/prime-security-dev`. Remove the OpenCode wrapper when removing its skill. Restart affected clients.
+For plugins:
+
+| Client | Update | Remove |
+|---|---|---|
+| Claude Code | `claude plugin marketplace update prime && claude plugin update prime-security-dev@prime` | `claude plugin uninstall prime-security-dev@prime` |
+| Codex | Refresh/reinstall the reviewed version through the plugin manager | `codex plugin remove prime-security-dev@prime` |
+| GitHub Copilot CLI | `copilot plugin update prime-security-dev` | `copilot plugin uninstall prime-security-dev` |
+| Cursor (local) | Copy the new plugin directory | Delete `~/.cursor/plugins/local/prime-security-dev` |
+| OpenCode | Update the skill | Delete `~/.config/opencode/plugins/prime-security-dev.js`, then remove the skill |
+| Pi | `pi update` (pinned refs stay pinned; reinstall with the next reviewed ref) | `pi remove git:github.com/PrimeSecurityAI/prime-security-ai-plugins` |
+
+Restart affected clients.
 
 Removing the plugin/skill does not delete shared credentials, saved origin approvals, or task output files. Delete the Prime token file only when no other Prime integration needs it. Existing legacy `.claude/state/guardrails-loaded-*` markers are no longer consulted; they can be removed after upgrading. Older versions' `~/.local/state/prime-security` edit logs are no longer produced or consumed; remove them if no longer needed.
 
@@ -112,7 +165,7 @@ Run from the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test tests/opencode.test.mjs
+node --test tests/opencode.test.mjs tests/pi.test.mjs
 for p in plugins/prime-security-dev plugins/prime-security-operator .; do claude plugin validate "$p"; done
 ```
 

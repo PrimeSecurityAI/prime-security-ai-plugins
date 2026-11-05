@@ -5,7 +5,7 @@ The portable `prime` Agent Skill interacts with Prime Security for security desi
 ## Prerequisites
 
 - Node.js 22.20.0 or later with `npx`
-- Claude Code, Codex, OpenCode, or Cursor
+- Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, or Pi
 - A Prime Security account
 - `python3` 3.9 or later for the browser login
 - HTTPS access to GitHub, npm, and the Prime Security API
@@ -20,11 +20,13 @@ The primary cross-client installation is:
 npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global
 ```
 
-Use this command to target all supported clients without prompts:
+Without `--agent`, the Skills CLI detects installed clients and asks which to use. To install for one client without prompts, add `--agent <client> --yes` with `claude-code`, `codex`, `github-copilot`, `opencode`, `cursor`, or `pi`; repeat `--agent` for several. For example:
 
 ```bash
-npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent github-copilot --yes
 ```
+
+The GitHub Copilot installation serves Copilot CLI and Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs. For a controlled rollout, pin a reviewed release tag or full commit SHA: `PrimeSecurityAI/prime-security-ai-plugins#<sha>`.
 
 Choose one installation path. Do not install both this plain skill and the Claude marketplace plugin in the same client.
 
@@ -34,10 +36,10 @@ When Claude Code and OpenCode are targeted together, OpenCode may log a duplicat
 
 ```bash
 npx skills update prime --global --yes
-npx skills remove prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+npx skills remove prime --global
 ```
 
-Restart a client if it does not detect the change.
+`remove` asks which clients to remove the skill from; add `--agent <client> --yes` to choose them non-interactively. Restart a client if it does not detect the change.
 
 ## Credentials
 
@@ -91,16 +93,18 @@ Natural-language requests can activate the skill automatically.
 |---|---|---|
 | Claude Code | `/prime` | `/prime review this design for security risks` |
 | Codex | `$prime` | `$prime search policies for password requirements` |
+| GitHub Copilot | `/prime` | `/prime review this design for security risks` |
 | OpenCode | Ask it to use `prime` | `Use the prime skill to review this design` |
 | Cursor | Ask it to use `prime` | `Use the prime skill to analyze this repository` |
+| Pi | `/skill:prime` | `/skill:prime review this design for security risks` |
 
 The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<group>` documentation, follows each endpoint's authentication contract, and polls only documented asynchronous responses.
 
 ## MCP Server
 
-The Claude, Codex, and Cursor plugins also connect to the Prime MCP server. The Codex plugin always connects to `https://api.primesec.ai/mcp`, because Codex does not expand `PRIME_API_URL` in plugin MCP URLs. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, OpenCode, or Cursor without a plugin, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
+The Claude, Codex, GitHub Copilot, and Cursor plugins also connect to the Prime MCP server. The Codex plugin always connects to `https://api.primesec.ai/mcp`, because Codex does not expand `PRIME_API_URL` in plugin MCP URLs. The Skills CLI and manual installations include only the skill; to use the MCP server from Claude, Codex, GitHub Copilot, OpenCode, or Cursor without a plugin, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
 
-The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, Codex, or Cursor, for example from the token file the browser login writes:
+The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, Codex, Copilot, or Cursor, for example from the token file the browser login writes:
 
 ```bash
 export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
@@ -129,8 +133,10 @@ Copy the canonical `skills/prime` directory to the client user directory as a fo
 |---|---|
 | Claude Code | `~/.claude/skills/prime` |
 | Codex | `~/.agents/skills/prime` |
+| GitHub Copilot | `~/.agents/skills/prime` or `~/.copilot/skills/prime` |
 | OpenCode | `~/.agents/skills/prime` |
 | Cursor | `~/.agents/skills/prime` |
+| Pi | `~/.agents/skills/prime` |
 
 For multiple clients, keep one copy at `~/.agents/skills/prime` and link it into `~/.claude/skills/prime`. Do not combine manual, Skills CLI, and marketplace installations.
 
@@ -153,6 +159,15 @@ codex plugin add prime-security-operator@prime
 ```
 
 Start a new session. Do not also install the plain `prime` skill for Codex.
+
+## GitHub Copilot CLI Plugin Alternative
+
+```bash
+copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+copilot plugin install prime-security-operator@prime
+```
+
+Update with `copilot plugin update prime-security-operator`; remove with `copilot plugin uninstall prime-security-operator`. If Prime MCP tools return `401`, add the server manually as shown in the repository README's [GitHub Copilot CLI](../../README.md#github-copilot-cli) section. Do not also install the plain `prime` skill for Copilot.
 
 ## Canonical Source
 

@@ -12,13 +12,16 @@ Use this checklist before publishing a release candidate. Record results, exact 
 
 ## Live acceptance
 
-Exercise each supported client: Claude Code, Codex, OpenCode, and Cursor. Use an authorized test account and disposable repositories, without production mutations.
+Exercise each supported client: Claude Code, Codex, OpenCode 2.x, Cursor, GitHub Copilot (CLI plugin, plus VS Code agent mode for the standalone skill), and Pi. Use an authorized test account and disposable repositories, without production mutations.
 
 - Fresh install and explicit skill invocation load the complete policy set.
 - A coding request selects the skill automatically, or the documented explicit invocation reliably invokes it.
 - Missing/expired credentials produce safe recovery instructions and no false success.
 - Follow-up messages reuse the ongoing task's policies; a new independent task or repository/account change reloads them.
-- Session start/resume and compaction recovery provide guidance. Claude/Codex/Cursor ordinary prompts do not add transcript reminders; OpenCode includes guidance in each fresh system prompt without accumulating messages.
+- Session start/resume and compaction recovery provide guidance. Claude/Codex/Cursor/Copilot ordinary prompts do not add transcript reminders; OpenCode and Pi include guidance in each fresh system prompt without accumulating messages.
+- Copilot CLI plugin: `copilot plugin install prime-security-dev@prime` loads the skill and `hooks/copilot.json` from `.github/plugin/plugin.json` (not the Claude manifest), the sessionStart reminder reaches the model on startup, resume, and `/new`, and the hook command finds the script (record which plugin-root variable Copilot sets, and the hook working directory). Record whether the operator plugin connects the MCP server with `${PRIME_PAT_TOKEN}` expanded.
+- OpenCode 2.x: the `~/.config/opencode/plugins/prime-security-dev.js` wrapper loads, `context` adds one reminder per request (including after compaction and in subagent sessions), and no messages accumulate.
+- Pi: `pi install git:github.com/PrimeSecurityAI/prime-security-ai-plugins@<ref>` loads the skill and extension, the `prime_guardrails` section appears once, and disappears with `--no-skills`.
 - Optional adapters work when enabled; explicit standalone invocation works without them.
 - Large policy sets are fully read from the artifact, including policy text longer than a shell output limit.
 - Update, uninstall, and restart leave no duplicate skill or broken adapter.
@@ -31,7 +34,8 @@ Verify empty-policy accounts separately from unavailable service responses. Chec
 - An approved brand icon is available if required by the target directory.
 - Installation from the final immutable release reference succeeds.
 - Complete the acceptance checks before customer rollout, then pilot with a small group.
-- For rollback, reinstall the previous reviewed version and remove the optional OpenCode wrapper if that version lacks its adapter. Shared token files remain usable by the operator skill.
+- Version metadata agrees across the Claude, Codex, Cursor, Copilot, and Pi (`package.json`) manifests and all marketplace entries.
+- For rollback, reinstall the previous reviewed version. OpenCode 1.x users need a 1.2.x release, whose adapter uses the 1.x plugin API. Shared token files remain usable by the operator skill.
 
 ## Reference documentation
 
@@ -41,3 +45,9 @@ Verify empty-policy accounts separately from unavailable service responses. Chec
 - https://code.claude.com/docs/en/hooks
 - https://opencode.ai/docs/skills/
 - https://opencode.ai/docs/plugins/
+- https://opencode.ai/v2/docs/build/plugins/migrate-v1
+- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md
+- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md
+- https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
+- https://docs.github.com/en/copilot/reference/hooks-configuration
+- https://docs.github.com/en/copilot/concepts/agents/about-agent-skills

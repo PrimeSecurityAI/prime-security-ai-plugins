@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "root=\"${PLUGIN_ROOT:-${COPILOT_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-.}}}\"; python3 \"$root/skills/prime-code-guardrails/scripts/prime_hooks.py\" reminder --format copilot",
+        "timeoutSec": 5
+      }
+    ]
+  }
+}

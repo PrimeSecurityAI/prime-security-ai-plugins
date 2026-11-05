@@ -6,10 +6,10 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 
 | Component | What it does | Clients |
 |---|---|---|
-| `prime` skill | Calls the Prime API using its published route documentation | Claude Code, Codex, OpenCode, Cursor |
+| `prime` skill | Calls the Prime API using its published route documentation | Claude Code, Codex, GitHub Copilot, OpenCode, Cursor, Pi |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
-| `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code, Codex, Cursor |
-| `prime-security-dev` | Portable code guardrails skill and optional client hooks; Claude plugin retains MCP connection | Claude Code, Codex, OpenCode, Cursor |
+| `prime-security-operator` plugin | The `prime` skill and the MCP server connection | Claude Code, Codex, GitHub Copilot CLI, Cursor |
+| `prime-security-dev` plugin | Code guardrails skill plus a session reminder that tells the agent to use it | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
 
 ## Prerequisites
 
@@ -20,19 +20,31 @@ Agent Skills, Claude Code plugins, and an MCP server for working with Prime Secu
 
 On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. MCP configurations except the Claude connector read `PRIME_PAT_TOKEN`; see [Configure Credentials](#configure-credentials).
 
+## Skill Or Plugin?
+
+A **skill** is instructions the agent loads when it decides the skill is relevant, or when you invoke it. A **plugin** bundles the skill with the pieces the client runs on its own: lifecycle hooks and the MCP server connection.
+
+| You want | Install |
+|---|---|
+| Ask Prime about designs, repositories, policies, and posture | The `prime` skill (below). The operator plugin adds the MCP server. |
+| Security guardrails applied to every coding task | The **`prime-security-dev` plugin** for your client. See the [prime-security-dev guide](plugins/prime-security-dev/README.md). |
+
+The `prime-code-guardrails` skill on its own does **not** run automatically: the agent uses it only when it chooses to or when you invoke it. The dev plugin adds a reminder at session start (and after compaction where the client supports it) so the agent loads the guardrails before changing code. `npx skills add` installs only skills, even from this repository's plugin manifests; it never installs hooks or MCP servers.
+
 ## Install The Portable Skill
 
-Use the Skills CLI for the primary cross-client installation:
+Use the Skills CLI for the primary cross-client installation. Without `--agent`, it detects installed clients and asks which to use. For one client, pick its command:
 
-```bash
-npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global
-```
+| Client | Command |
+|---|---|
+| Claude Code | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent claude-code --yes` |
+| Codex | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent codex --yes` |
+| GitHub Copilot | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent github-copilot --yes` |
+| OpenCode | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent opencode --yes` |
+| Cursor | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent cursor --yes` |
+| Pi | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent pi --yes` |
 
-For a non-interactive installation targeting all four supported clients explicitly:
-
-```bash
-npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
-```
+Repeat `--agent` to target several clients in one command. The GitHub Copilot installation serves Copilot CLI and Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs. For a controlled rollout, pin a reviewed release tag or full 40-character commit SHA: `PrimeSecurityAI/prime-security-ai-plugins#<sha>`.
 
 Choose one installation path. Do not install both the plain `prime` skill and the `prime-security-operator` Claude plugin for the same client; duplicate skills can produce ambiguous invocation and updates.
 
@@ -42,10 +54,14 @@ When Claude Code and OpenCode are targeted together, OpenCode may log a duplicat
 
 ```bash
 npx skills update prime --global --yes
-npx skills remove prime --global --agent claude-code --agent codex --agent opencode --agent cursor --yes
+npx skills remove prime --global
 ```
 
-Restart a client if it does not detect a newly installed, updated, or removed skill.
+`remove` asks which clients to remove the skill from; add `--agent <client> --yes` to choose them non-interactively. Restart a client if it does not detect a newly installed, updated, or removed skill.
+
+### GitHub Copilot Cloud Agent
+
+The cloud agent has no browser and restricts outbound network access. To use the skill there, add the Prime API host to the repository's Copilot firewall allowlist and provide `PRIME_PAT_TOKEN` as a secret in the repository's `copilot` environment.
 
 ## Configure Credentials
 
@@ -169,6 +185,14 @@ Add it to `~/.config/opencode/opencode.json`:
 }
 ```
 
+### GitHub Copilot CLI
+
+The `prime-security-operator` Copilot plugin connects the server; see [GitHub Copilot Plugins](#github-copilot-plugins). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
+
+```bash
+copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKEN" prime https://api.primesec.ai/mcp
+```
+
 ### Cursor
 
 Add it to `~/.cursor/mcp.json`:
@@ -198,8 +222,10 @@ All clients can select `prime` automatically from a natural-language request.
 |---|---|---|
 | Claude Code | `/prime` | `/prime review this design for security risks` |
 | Codex | `$prime` | `$prime search our policies for password requirements` |
+| GitHub Copilot | `/prime` | `/prime review this design for security risks` |
 | OpenCode | Ask it to use `prime` | `Use the prime skill to review this design` |
 | Cursor | Ask it to use `prime` | `Use the prime skill to analyze this repository` |
+| Pi | `/skill:prime` | `/skill:prime review this design for security risks` |
 
 ## Manual Install Alternative
 
@@ -209,8 +235,10 @@ If the Skills CLI is unavailable, copy the canonical directory at `plugins/prime
 |---|---|
 | Claude Code | `~/.claude/skills/prime` |
 | Codex | `~/.agents/skills/prime` |
+| GitHub Copilot | `~/.agents/skills/prime` or `~/.copilot/skills/prime` |
 | OpenCode | `~/.agents/skills/prime` |
 | Cursor | `~/.agents/skills/prime` |
+| Pi | `~/.agents/skills/prime` |
 
 For several clients, keep one copy at `~/.agents/skills/prime` and link `~/.claude/skills/prime` to it for Claude Code. On systems without links, use the client-specific directories. Do not combine manual installation with the Skills CLI or marketplace installation.
 
@@ -229,7 +257,7 @@ The plugin skill is invoked as `/prime-security-operator:prime` in Claude Code.
 
 ## Cursor Plugins
 
-Both plugins also ship Cursor manifests, and `.cursor-plugin/marketplace.json` lists them. Each bundles its skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` from the environment that starts Cursor. Team admins can import this repository as a team marketplace. For a local install, copy the plugin directory (for example `plugins/prime-security-operator`) to `~/.cursor/plugins/local/<plugin-name>`, then run **Developer: Reload Window**. Install a plugin **or** the Skills CLI skill for Cursor, not both. For development guardrails across Claude Code, Codex, OpenCode, and Cursor, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
+Both plugins also ship Cursor manifests, and `.cursor-plugin/marketplace.json` lists them. Each bundles its skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` from the environment that starts Cursor. Team admins can import this repository as a team marketplace. For a local install, copy the plugin directory (for example `plugins/prime-security-operator`) to `~/.cursor/plugins/local/<plugin-name>`, then run **Developer: Reload Window**. Install a plugin **or** the Skills CLI skill for Cursor, not both. For development guardrails across all supported clients, see the [prime-security-dev installation guide](plugins/prime-security-dev/README.md).
 
 ## Codex Plugins
 
@@ -242,15 +270,26 @@ codex plugin add prime-security-operator@prime
 
 The operator plugin bundles the `prime` skill and the Prime MCP server, which reads `PRIME_PAT_TOKEN` and always uses `https://api.primesec.ai/mcp`; Codex does not expand `PRIME_API_URL` in plugin MCP URLs. Install a plugin **or** the Skills CLI skill for Codex, not both.
 
+## GitHub Copilot Plugins
+
+Copilot CLI reads the Claude marketplace in this repository:
+
+```bash
+copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
+copilot plugin install prime-security-operator@prime
+```
+
+Update with `copilot plugin update prime-security-operator` and remove with `copilot plugin uninstall prime-security-operator`. The operator plugin reads its skill and `.mcp.json` from the Claude plugin layout. If Prime MCP tools return `401`, add the server manually as shown in [GitHub Copilot CLI](#github-copilot-cli). Install a plugin **or** the Skills CLI skill for Copilot, not both. The dev plugin has its own Copilot manifest; see the [prime-security-dev guide](plugins/prime-security-dev/README.md).
+
 ## Plugins
 
 ### prime-security-operator
 
-The cross-client Prime API skill packaged for Claude Code, Codex, and Cursor, plus the MCP server connection. Its only canonical skill source is `plugins/prime-security-operator/skills/prime/SKILL.md`.
+The cross-client Prime API skill packaged for Claude Code, Codex, GitHub Copilot CLI, and Cursor, plus the MCP server connection. Its only canonical skill source is `plugins/prime-security-operator/skills/prime/SKILL.md`.
 
 ### prime-security-dev
 
-Portable `prime-code-guardrails` skill for Claude Code, Codex, and OpenCode, with safe shared credentials, a bundled API helper, and optional client lifecycle integrations. The Claude plugin retains its MCP server connection. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
+The `prime-code-guardrails` skill with safe shared credentials and a bundled API helper, packaged with a session reminder for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Install the plugin for your client, not only the skill, when guardrails should apply to every coding task. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 
@@ -258,16 +297,18 @@ Portable `prime-code-guardrails` skill for Claude Code, Codex, and OpenCode, wit
 .claude-plugin/marketplace.json      Claude marketplace
 .agents/plugins/marketplace.json     Codex marketplace
 .cursor-plugin/marketplace.json      Cursor marketplace
+package.json                         Pi package (prime-security-dev)
 plugins/
 |-- prime-security-operator/
 |   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
 |   |-- .mcp.json
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
-    |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
+    |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
     |-- .mcp.json
-    |-- hooks/hooks.json codex.json cursor.json
-    `-- skills/prime-code-guardrails/
+    |-- hooks/hooks.json codex.json cursor.json copilot.json
+    |-- pi/extension.js
+    `-- skills/prime-code-guardrails/   (adapters/opencode.js)
 ```
 
 ## License

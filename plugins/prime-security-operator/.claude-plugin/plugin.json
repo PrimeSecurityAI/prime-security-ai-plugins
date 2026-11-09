@@ -1,6 +1,6 @@
 {
   "name": "prime-security-operator",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Prime Security API skill for security design reviews, knowledge base policy search, code repository analysis, and AI-assisted security conversations",
   "author": {
     "name": "Prime Security"
@@ -9,5 +9,8 @@
   "license": "MIT",
   "privacyPolicyUrl": "https://www.primesec.ai/policies/privacy-policy",
   "keywords": ["security", "security-review", "prime", "compliance", "design-review", "api"],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "mcpServers": {
+    "prime": {"type": "http", "url": "${PRIME_API_URL:-https://api.primesec.ai}/mcp", "oauth": {"clientId": "prime-claude-code"}}
+  }
 }

@@ -18,7 +18,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 - For the `prime` skill's browser login: `python3` 3.9 or later.
 - For the skill-only installation: Node.js 22.20.0 or later with `npx`, and HTTPS access to npm.
 
-On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. MCP configurations except the Claude connector read `PRIME_PAT_TOKEN`; see [Configure Credentials](#configure-credentials).
+On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. The plugins' MCP connections and the Claude connector log in through the browser; manual MCP configurations read `PRIME_PAT_TOKEN`, see [Configure Credentials](#configure-credentials).
 
 ## Plugin Or Skill?
 
@@ -40,7 +40,7 @@ For development guardrails, follow the [prime-security-dev guide](plugins/prime-
 
 ## Install The Operator Plugin
 
-The plugin bundles the `prime` skill and the Prime MCP server. The MCP connection reads `PRIME_PAT_TOKEN` from the environment that starts your client; see [Configure Credentials](#configure-credentials). The skill itself also works with the browser login.
+The plugin bundles the `prime` skill and the Prime MCP server. The client asks you to log in to the MCP server through the browser on first use. The skill has its own browser login.
 
 ### Claude Code Plugin
 
@@ -67,7 +67,7 @@ copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
 copilot plugin install prime-security-operator@prime
 ```
 
-Copilot CLI reads the Claude marketplace and the operator's Claude plugin layout (skill and `.mcp.json`). If Prime MCP tools return `401`, add the server manually as shown in [GitHub Copilot CLI](#github-copilot-cli). Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs uses the [skill-only installation](#install-the-skill-only).
+Copilot CLI reads the Claude marketplace and the operator's `.github/plugin/plugin.json`, which registers the skill and the MCP server. Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs uses the [skill-only installation](#install-the-skill-only).
 
 ### Cursor Plugin
 
@@ -178,7 +178,7 @@ mv -f -- "$token_tmp" "$config_dir/token"
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
 
-The MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
+The manual MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
 
 ```bash
 export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
@@ -212,7 +212,7 @@ On Team and Enterprise plans, an organization Owner adds the connector, and each
 
 ### Claude Code
 
-Installing either Claude Code plugin connects the server, using `PRIME_PAT_TOKEN` and `PRIME_API_URL` when set. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
+Installing either Claude Code plugin connects the server, using `PRIME_API_URL` when set, and asks you to log in through the browser on first use. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
 
 Without a plugin, add it at user scope. This stores the token in your Claude Code configuration:
 
@@ -222,7 +222,7 @@ claude mcp add --transport http --scope user prime https://api.primesec.ai/mcp -
 
 ### Codex
 
-The operator Codex plugin connects the server; see [Codex Plugin](#codex-plugin). Without a plugin:
+The operator Codex plugin connects the server and asks you to log in through the browser; see [Codex Plugin](#codex-plugin). Without a plugin:
 
 ```bash
 codex mcp add prime --url https://api.primesec.ai/mcp --bearer-token-env-var PRIME_PAT_TOKEN
@@ -258,7 +258,7 @@ Add it to `~/.config/opencode/opencode.json`:
 
 ### GitHub Copilot CLI
 
-The `prime-security-operator` Copilot plugin connects the server; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
+The `prime-security-operator` Copilot plugin connects the server and asks you to log in through the browser; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
 
 ```bash
 copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKEN" prime https://api.primesec.ai/mcp
@@ -266,7 +266,7 @@ copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKE
 
 ### Cursor
 
-The Cursor plugins connect the server; see [Cursor Plugin](#cursor-plugin). Without a plugin, add it to `~/.cursor/mcp.json`:
+The Cursor plugins connect the server and ask you to log in through the browser; see [Cursor Plugin](#cursor-plugin). Without a plugin, add it to `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -318,12 +318,10 @@ The `prime-code-guardrails` skill with safe shared credentials and a bundled API
 package.json                         Pi package (prime-security-dev)
 plugins/
 |-- prime-security-operator/
-|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
-|   |-- .mcp.json
+|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
     |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
-    |-- .mcp.json
     |-- hooks/hooks.json codex.json cursor.json copilot.json
     |-- pi/extension.js
     `-- skills/prime-code-guardrails/   (adapters/opencode.js)

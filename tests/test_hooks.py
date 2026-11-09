@@ -59,6 +59,25 @@ class HookTests(unittest.TestCase):
                     if folder == '.cursor-plugin':
                         self.assertTrue((plugin / manifest['logo']).is_file())
 
+    def test_plugin_mcp_servers_log_in_with_their_client_id(self):
+        repo = ROOT.parents[1]
+        configs = {
+            'prime-security-operator/.claude-plugin/plugin.json': 'prime-claude-code',
+            'prime-security-operator/.codex-plugin/plugin.json': 'prime-codex',
+            'prime-security-operator/.github/plugin/plugin.json': 'prime-copilot',
+            'prime-security-operator/.cursor-plugin/plugin.json': 'prime-cursor',
+            'prime-security-dev/.claude-plugin/plugin.json': 'prime-claude-code',
+            'prime-security-dev/.cursor-plugin/plugin.json': 'prime-cursor',
+        }
+        for path, client_id in configs.items():
+            with self.subTest(path=path):
+                server = json.loads((repo / 'plugins' / path).read_text())['mcpServers']['prime']
+                self.assertEqual(server.get('oauth', {}).get('clientId') or server['auth']['CLIENT_ID'], client_id)
+                self.assertNotIn('headers', server)  # a static Authorization header blocks the OAuth login
+        for plugin in ('prime-security-operator', 'prime-security-dev'):
+            # Copilot CLI also loads a root .mcp.json, which overrides its own manifest's client ID
+            self.assertFalse((repo / 'plugins' / plugin / '.mcp.json').exists())
+
     def test_copilot_session_start_gets_top_level_context(self):
         for source in ('startup', 'resume', 'new'):
             with self.subTest(source=source):

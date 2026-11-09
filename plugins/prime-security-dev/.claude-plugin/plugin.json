@@ -1,6 +1,6 @@
 {
   "name": "prime-security-dev",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Prime Security policy guidance for coding agents, with optional lifecycle reminders",
   "author": {
     "name": "Prime Security"
@@ -9,5 +9,8 @@
   "license": "MIT",
   "privacyPolicyUrl": "https://www.primesec.ai/policies/privacy-policy",
   "keywords": ["security", "guardrails", "hooks", "code-review", "prime"],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "mcpServers": {
+    "prime": {"type": "http", "url": "${PRIME_API_URL:-https://api.primesec.ai}/mcp", "oauth": {"clientId": "prime-claude-code"}}
+  }
 }

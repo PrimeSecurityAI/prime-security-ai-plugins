@@ -10,7 +10,7 @@ The `prime` skill interacts with Prime Security for security design reviews, kno
 - HTTPS access to GitHub and the Prime Security API
 - Node.js 22.20.0 or later with `npx`, for the skill-only installation
 
-On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The plugin's MCP connection reads a PAT from `PRIME_PAT_TOKEN`; see [MCP Server](#mcp-server).
+On first use the skill opens your browser to log in to Prime Security. A PAT is needed only on machines without a browser. The plugin's MCP connection has its own browser login; see [MCP Server](#mcp-server).
 
 ## Install
 
@@ -41,7 +41,7 @@ copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
 copilot plugin install prime-security-operator@prime
 ```
 
-Update with `copilot plugin update prime-security-operator`; remove with `copilot plugin uninstall prime-security-operator`. If Prime MCP tools return `401`, add the server manually as shown in the repository README's [GitHub Copilot CLI](../../README.md#github-copilot-cli) section. Copilot agent mode in IDEs uses the skill-only installation.
+Update with `copilot plugin update prime-security-operator`; remove with `copilot plugin uninstall prime-security-operator`. Copilot agent mode in IDEs uses the skill-only installation.
 
 ### Cursor
 
@@ -136,13 +136,9 @@ The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<
 
 ## MCP Server
 
-The Claude, Codex, GitHub Copilot, and Cursor plugins also connect to the Prime MCP server. The Codex plugin always connects to `https://api.primesec.ai/mcp`, because Codex does not expand `PRIME_API_URL` in plugin MCP URLs. The skill-only and manual installations include only the skill; to use the MCP server from Claude, Codex, GitHub Copilot, OpenCode, or Cursor without a plugin, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
+The Claude, Codex, GitHub Copilot, and Cursor plugins also connect to the Prime MCP server. The client asks you to log in through the browser the first time it connects, using the plugin's registered OAuth client, and refreshes the login silently afterwards. When the login ends or is revoked, the client asks you to log in again. The plugin's MCP connection does not use `PRIME_PAT_TOKEN` or the token file.
 
-The plugin's MCP connection reads only `PRIME_PAT_TOKEN`, not the token file, so export it in the shell that starts Claude Code, Codex, Copilot, or Cursor, for example from the token file the browser login writes:
-
-```bash
-export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
-```
+Only the Claude Code plugin honors `PRIME_API_URL`; the Codex, GitHub Copilot, and Cursor plugins always connect to `https://api.primesec.ai/mcp`, because those clients do not expand it in plugin MCP URLs. The skill-only and manual installations include only the skill; to use the MCP server from Claude, Codex, GitHub Copilot, OpenCode, or Cursor without a plugin, or with a PAT on a machine without a browser, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
 
 ## Pre-Approving Network Access
 

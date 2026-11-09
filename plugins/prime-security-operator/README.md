@@ -136,9 +136,9 @@ The skill fetches `/llm.txt` as a route-group index, loads only relevant `/llm/<
 
 ## MCP Server
 
-The Claude, Codex, GitHub Copilot, and Cursor plugins also connect to the Prime MCP server. The client asks you to log in through the browser the first time it connects, using the plugin's registered OAuth client, and refreshes the login silently afterwards. When the login ends or is revoked, the client asks you to log in again. The plugin's MCP connection does not use `PRIME_PAT_TOKEN` or the token file.
+The Claude, Codex, GitHub Copilot, and Cursor plugins also connect to the Prime MCP server. Log in once through the browser with your client's [login step](../../README.md#mcp-server); the client then refreshes the login silently. When the login ends or is revoked, log in again. The plugin's MCP connection does not use `PRIME_PAT_TOKEN` or the token file. OpenCode has no plugin; connect it with the [OpenCode configuration](../../README.md#opencode).
 
-Only the Claude Code plugin honors `PRIME_API_URL`; the Codex, GitHub Copilot, and Cursor plugins always connect to `https://api.primesec.ai/mcp`, because those clients do not expand it in plugin MCP URLs. The skill-only and manual installations include only the skill; to use the MCP server from Claude, Codex, GitHub Copilot, OpenCode, or Cursor without a plugin, or with a PAT on a machine without a browser, follow the [MCP Server section](../../README.md#mcp-server) of the repository README.
+Only the Claude Code plugin honors `PRIME_API_URL`; the other plugins always connect to `https://api.primesec.ai/mcp`. The skill-only and manual installations include only the skill. To use the MCP server from Claude, Codex, GitHub Copilot, OpenCode, or Cursor without a plugin, follow the [MCP Server section](../../README.md#mcp-server) of the repository README. On a machine without a browser, use the skill-only installation with that manual PAT configuration instead of the plugin, so the client does not register two `prime` servers.
 
 ## Pre-Approving Network Access
 

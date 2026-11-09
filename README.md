@@ -40,7 +40,7 @@ For development guardrails, follow the [prime-security-dev guide](plugins/prime-
 
 ## Install The Operator Plugin
 
-The plugin bundles the `prime` skill and the Prime MCP server. The client asks you to log in to the MCP server through the browser on first use. The skill has its own browser login.
+The plugin bundles the `prime` skill and the Prime MCP server, each with its own browser login; see [MCP Server](#mcp-server).
 
 ### Claude Code Plugin
 
@@ -86,7 +86,7 @@ Restart the client after updating or removing.
 
 ## Install The Skill Only
 
-For OpenCode, Pi, Copilot agent mode in IDEs, and other Agent Skills clients without a Prime plugin. Without `--agent`, the Skills CLI detects installed clients and asks which to use:
+For OpenCode, Pi, Copilot agent mode in IDEs, and other Agent Skills clients without a Prime plugin. In OpenCode, also [connect the MCP server](#opencode). Without `--agent`, the Skills CLI detects installed clients and asks which to use:
 
 ```bash
 npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global
@@ -201,6 +201,16 @@ Prime exposes a remote MCP server over Streamable HTTP at `https://api.primesec.
 
 `call_prime_operation` can run operations that change data in your Prime account. Review those calls before approving them.
 
+The plugins connect the server for you, and OpenCode connects it from its configuration below. Log in once through the browser; the client then refreshes the login silently. When the login ends or is revoked, log in again the same way. This connection does not use `PRIME_PAT_TOKEN`.
+
+| Client | Log in |
+|---|---|
+| Claude Code | Run `/mcp`, select the Prime server, then **Authenticate** |
+| Codex | `codex mcp login prime` |
+| GitHub Copilot CLI | `/mcp auth prime` |
+| Cursor | In **Cursor Settings**, open MCP and log in to `prime` |
+| OpenCode | `opencode mcp auth prime` |
+
 ### Claude (Web, Desktop, Mobile)
 
 1. Go to **Customize > Connectors**, select **+ Add**, then **Add custom connector**.
@@ -212,7 +222,7 @@ On Team and Enterprise plans, an organization Owner adds the connector, and each
 
 ### Claude Code
 
-Installing either Claude Code plugin connects the server, using `PRIME_API_URL` when set, and asks you to log in through the browser on first use. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
+Installing either Claude Code plugin connects the server, using `PRIME_API_URL` when set. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
 
 Without a plugin, add it at user scope. This stores the token in your Claude Code configuration:
 
@@ -222,7 +232,7 @@ claude mcp add --transport http --scope user prime https://api.primesec.ai/mcp -
 
 ### Codex
 
-The operator Codex plugin connects the server and asks you to log in through the browser; see [Codex Plugin](#codex-plugin). Without a plugin:
+The operator Codex plugin connects the server; see [Codex Plugin](#codex-plugin). Without a plugin:
 
 ```bash
 codex mcp add prime --url https://api.primesec.ai/mcp --bearer-token-env-var PRIME_PAT_TOKEN
@@ -238,7 +248,7 @@ bearer_token_env_var = "PRIME_PAT_TOKEN"
 
 ### OpenCode
 
-Add it to `~/.config/opencode/opencode.json`:
+Add it to `~/.config/opencode/opencode.json`, then run `opencode mcp auth prime`:
 
 ```json
 {
@@ -247,18 +257,19 @@ Add it to `~/.config/opencode/opencode.json`:
     "prime": {
       "type": "remote",
       "url": "https://api.primesec.ai/mcp",
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:PRIME_PAT_TOKEN}"
+      "oauth": {
+        "clientId": "prime-opencode"
       }
     }
   }
 }
 ```
 
+On a machine without a browser, replace `"oauth": {...}` with `"oauth": false` and add `"headers": {"Authorization": "Bearer {env:PRIME_PAT_TOKEN}"}`.
+
 ### GitHub Copilot CLI
 
-The `prime-security-operator` Copilot plugin connects the server and asks you to log in through the browser; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
+The `prime-security-operator` Copilot plugin connects the server; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
 
 ```bash
 copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKEN" prime https://api.primesec.ai/mcp
@@ -266,7 +277,7 @@ copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKE
 
 ### Cursor
 
-The Cursor plugins connect the server and ask you to log in through the browser; see [Cursor Plugin](#cursor-plugin). Without a plugin, add it to `~/.cursor/mcp.json`:
+The Cursor plugins connect the server; see [Cursor Plugin](#cursor-plugin). Without a plugin, add it to `~/.cursor/mcp.json`:
 
 ```json
 {

@@ -100,7 +100,7 @@ For one client, pick its command:
 | Pi | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent pi --yes` |
 | GitHub Copilot (IDE agent mode) | `npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global --agent github-copilot --yes` |
 
-The same `--agent` values work for `claude-code`, `codex`, and `cursor` when you cannot use their plugins. Repeat `--agent` to target several clients in one command. For a controlled rollout, pin a reviewed release tag or full 40-character commit SHA: `PrimeSecurityAI/prime-security-ai-plugins#<sha>`.
+Repeat `--agent` to target several clients in one command. For a controlled rollout, pin a reviewed release tag or full 40-character commit SHA: `PrimeSecurityAI/prime-security-ai-plugins#<sha>`.
 
 The skill-only installation does not connect the MCP server; add it yourself as described in [MCP Server](#mcp-server) if you need it.
 

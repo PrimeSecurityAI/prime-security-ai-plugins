@@ -75,7 +75,7 @@ The adapter targets OpenCode 2.x (`@opencode/cli`); OpenCode 1.x plugins use a d
    export { default } from "/absolute/path/to/prime-code-guardrails/adapters/opencode.js";
    ```
 
-   Replace the absolute path with the installed skill location, normally `~/.agents/skills/prime-code-guardrails` expanded to an absolute path. Preserve the skill's `adapters/package.json`.
+   Replace the absolute path with the installed skill location, normally `~/.agents/skills/prime-code-guardrails` expanded to an absolute path. Preserve the skill's `adapters/package.json`. If you set up the earlier 1.x adapter, replace its `export { PrimeSecurityDev } ...` line with this one.
 3. Restart OpenCode.
 
 The adapter is self-contained JavaScript with no npm dependencies, and it does not run Python at startup. It uses the `context` session hook to add one reminder to each freshly built system prompt, including tool continuations and the first request after compaction, without appending messages to the conversation history.

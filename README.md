@@ -248,24 +248,25 @@ bearer_token_env_var = "PRIME_PAT_TOKEN"
 
 ### OpenCode
 
-Add it to `~/.config/opencode/opencode.json`, then run `opencode mcp auth prime`:
+For OpenCode 2.x. Add it to `~/.config/opencode/opencode.json`, then run `opencode mcp auth prime`:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "prime": {
-      "type": "remote",
-      "url": "https://api.primesec.ai/mcp",
-      "oauth": {
-        "clientId": "prime-opencode"
+    "servers": {
+      "prime": {
+        "type": "remote",
+        "url": "https://api.primesec.ai/mcp",
+        "oauth": {
+          "client_id": "prime-opencode"
+        }
       }
     }
   }
 }
 ```
 
-On a machine without a browser, replace `"oauth": {...}` with `"oauth": false` and add `"headers": {"Authorization": "Bearer {env:PRIME_PAT_TOKEN}"}`.
+On a machine without a browser, replace `"oauth": {...}` with `"headers": {"Authorization": "Bearer {env:PRIME_PAT_TOKEN}"}`.
 
 ### GitHub Copilot CLI
 

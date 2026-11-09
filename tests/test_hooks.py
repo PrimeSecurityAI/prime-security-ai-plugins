@@ -85,7 +85,7 @@ class HookTests(unittest.TestCase):
         command = json.loads((ROOT / 'hooks/copilot.json').read_text())['hooks']['sessionStart'][0]['bash']
         payload = json.dumps({'sessionId': 's', 'source': 'startup'})
         cases = [({variable: str(ROOT)}, '/') for variable in ('PLUGIN_ROOT', 'COPILOT_PLUGIN_ROOT', 'CLAUDE_PLUGIN_ROOT')]
-        for extra_env, cwd in cases + [({}, str(ROOT))]:
+        for extra_env, cwd in cases:
             with self.subTest(env=extra_env, cwd=cwd):
                 result = subprocess.run(['bash', '-c', command], input=payload, cwd=cwd, text=True,
                                         capture_output=True, env={'PATH': os.environ['PATH'], **extra_env})

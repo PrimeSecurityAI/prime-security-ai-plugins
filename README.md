@@ -18,7 +18,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 - For the `prime` skill's browser login: `python3` 3.9 or later.
 - For the skill-only installation: Node.js 22.20.0 or later with `npx`, and HTTPS access to npm.
 
-On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. MCP configurations except the Claude connector read `PRIME_PAT_TOKEN`; see [Configure Credentials](#configure-credentials).
+On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. The plugins' MCP connections and the Claude connector log in through the browser; manual MCP configurations read `PRIME_PAT_TOKEN`, see [Configure Credentials](#configure-credentials).
 
 ## Plugin Or Skill?
 
@@ -40,7 +40,7 @@ For development guardrails, follow the [prime-security-dev guide](plugins/prime-
 
 ## Install The Operator Plugin
 
-The plugin bundles the `prime` skill and the Prime MCP server. The MCP connection reads `PRIME_PAT_TOKEN` from the environment that starts your client; see [Configure Credentials](#configure-credentials). The skill itself also works with the browser login.
+The plugin bundles the `prime` skill and the Prime MCP server, each with its own browser login; see [MCP Server](#mcp-server).
 
 ### Claude Code Plugin
 
@@ -67,7 +67,7 @@ copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
 copilot plugin install prime-security-operator@prime
 ```
 
-Copilot CLI reads the Claude marketplace and the operator's Claude plugin layout (skill and `.mcp.json`). If Prime MCP tools return `401`, add the server manually as shown in [GitHub Copilot CLI](#github-copilot-cli). Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs uses the [skill-only installation](#install-the-skill-only).
+Copilot CLI reads the Claude marketplace and the operator's `.github/plugin/plugin.json`, which registers the skill and the MCP server. Copilot agent mode in VS Code, Visual Studio, and JetBrains IDEs uses the [skill-only installation](#install-the-skill-only).
 
 ### Cursor Plugin
 
@@ -86,7 +86,7 @@ Restart the client after updating or removing.
 
 ## Install The Skill Only
 
-For OpenCode, Pi, Copilot agent mode in IDEs, and other Agent Skills clients without a Prime plugin. Without `--agent`, the Skills CLI detects installed clients and asks which to use:
+For OpenCode, Pi, Copilot agent mode in IDEs, and other Agent Skills clients without a Prime plugin. In OpenCode, also [connect the MCP server](#opencode). Without `--agent`, the Skills CLI detects installed clients and asks which to use:
 
 ```bash
 npx skills add PrimeSecurityAI/prime-security-ai-plugins --skill prime --global
@@ -178,7 +178,7 @@ mv -f -- "$token_tmp" "$config_dir/token"
 
 On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
 
-The MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
+The manual MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
 
 ```bash
 export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
@@ -201,6 +201,16 @@ Prime exposes a remote MCP server over Streamable HTTP at `https://api.primesec.
 
 `call_prime_operation` can run operations that change data in your Prime account. Review those calls before approving them.
 
+The plugins connect the server for you, and OpenCode connects it from its configuration below. Log in once through the browser; the client then refreshes the login silently. When the login ends or is revoked, log in again the same way. This connection does not use `PRIME_PAT_TOKEN`.
+
+| Client | Log in |
+|---|---|
+| Claude Code | Run `/mcp`, select the Prime server, then **Authenticate** |
+| Codex | `codex mcp login prime` |
+| GitHub Copilot CLI | `/mcp auth prime` |
+| Cursor | In **Cursor Settings**, open MCP and log in to `prime` |
+| OpenCode | `opencode mcp auth prime` |
+
 ### Claude (Web, Desktop, Mobile)
 
 1. Go to **Customize > Connectors**, select **+ Add**, then **Add custom connector**.
@@ -212,7 +222,7 @@ On Team and Enterprise plans, an organization Owner adds the connector, and each
 
 ### Claude Code
 
-Installing either Claude Code plugin connects the server, using `PRIME_PAT_TOKEN` and `PRIME_API_URL` when set. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
+Installing either Claude Code plugin connects the server, using `PRIME_API_URL` when set. Installing both plugins still connects to it once; see [Claude Code Plugin](#claude-code-plugin).
 
 Without a plugin, add it at user scope. This stores the token in your Claude Code configuration:
 
@@ -238,23 +248,25 @@ bearer_token_env_var = "PRIME_PAT_TOKEN"
 
 ### OpenCode
 
-Add it to `~/.config/opencode/opencode.json`:
+For OpenCode 2.x. Add it to `~/.config/opencode/opencode.json`, then run `opencode mcp auth prime`:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "prime": {
-      "type": "remote",
-      "url": "https://api.primesec.ai/mcp",
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:PRIME_PAT_TOKEN}"
+    "servers": {
+      "prime": {
+        "type": "remote",
+        "url": "https://api.primesec.ai/mcp",
+        "oauth": {
+          "client_id": "prime-opencode"
+        }
       }
     }
   }
 }
 ```
+
+On a machine without a browser, replace `"oauth": {...}` with `"headers": {"Authorization": "Bearer {env:PRIME_PAT_TOKEN}"}`.
 
 ### GitHub Copilot CLI
 
@@ -318,12 +330,10 @@ The `prime-code-guardrails` skill with safe shared credentials and a bundled API
 package.json                         Pi package (prime-security-dev)
 plugins/
 |-- prime-security-operator/
-|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/
-|   |-- .mcp.json
+|   |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
 |   `-- skills/prime/SKILL.md
 `-- prime-security-dev/
     |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
-    |-- .mcp.json
     |-- hooks/hooks.json codex.json cursor.json copilot.json
     |-- pi/extension.js
     `-- skills/prime-code-guardrails/   (adapters/opencode.js)

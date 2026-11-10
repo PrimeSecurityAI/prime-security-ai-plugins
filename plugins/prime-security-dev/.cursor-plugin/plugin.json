@@ -1,6 +1,6 @@
 {
   "name": "prime-security-dev",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Prime Security policy guidance for coding agents, with session reminders",
   "author": {"name": "Prime Security"},
   "repository": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins",

@@ -49,7 +49,7 @@ class HookTests(unittest.TestCase):
 
     def test_marketplace_entries_match_plugin_manifests(self):
         repo = ROOT.parents[1]
-        for marketplace, folder in (('.claude-plugin/marketplace.json', '.claude-plugin'), ('.agents/plugins/marketplace.json', '.codex-plugin'), ('.cursor-plugin/marketplace.json', '.cursor-plugin')):
+        for marketplace, folder in (('.claude-plugin/marketplace.json', '.claude-plugin'), ('.claude-plugin/marketplace.json', '.github/plugin'), ('.agents/plugins/marketplace.json', '.codex-plugin'), ('.cursor-plugin/marketplace.json', '.cursor-plugin')):
             for entry in json.loads((repo / marketplace).read_text())['plugins']:
                 with self.subTest(marketplace=marketplace, plugin=entry['name']):
                     plugin = repo / entry['source']
@@ -58,6 +58,24 @@ class HookTests(unittest.TestCase):
                     self.assertEqual((manifest['name'], manifest['version'], entry.get('version', version)), (entry['name'], version, version))
                     if folder == '.cursor-plugin':
                         self.assertTrue((plugin / manifest['logo']).is_file())
+
+    def test_plugin_mcp_servers_log_in_with_their_client_id(self):
+        repo = ROOT.parents[1]
+        configs = {
+            'prime-security-operator/.claude-plugin/plugin.json': 'prime-claude-code',
+            'prime-security-operator/.codex-plugin/plugin.json': 'prime-codex',
+            'prime-security-operator/.github/plugin/plugin.json': 'prime-copilot',
+            'prime-security-operator/.cursor-plugin/plugin.json': 'prime-cursor',
+            'prime-security-dev/.claude-plugin/plugin.json': 'prime-claude-code',
+            'prime-security-dev/.cursor-plugin/plugin.json': 'prime-cursor',
+        }
+        for path, client_id in configs.items():
+            with self.subTest(path=path):
+                server = json.loads((repo / 'plugins' / path).read_text())['mcpServers']['prime']
+                self.assertEqual(server.get('oauth', {}).get('clientId') or server['auth']['CLIENT_ID'], client_id)
+                self.assertNotIn('headers', server)  # a static Authorization header blocks the OAuth login
+        # Copilot CLI also loads a root .mcp.json, which overrides its own manifest's client ID
+        self.assertEqual(list((repo / 'plugins').glob('*/.mcp.json')), [])
 
     def test_copilot_session_start_gets_top_level_context(self):
         for source in ('startup', 'resume', 'new'):
@@ -75,8 +93,6 @@ class HookTests(unittest.TestCase):
 
     def test_copilot_manifest_registers_hooks_without_mcp(self):
         manifest = json.loads((ROOT / '.github/plugin/plugin.json').read_text())
-        version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
-        self.assertEqual((manifest['name'], manifest['version']), ('prime-security-dev', version))
         self.assertEqual((manifest['skills'], manifest['hooks'], manifest['mcpServers']),
                          ('./skills/', './hooks/copilot.json', {}))
         self.assertEqual(json.loads((ROOT / 'hooks/copilot.json').read_text())['version'], 1)

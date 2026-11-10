@@ -122,7 +122,7 @@ The agent saves complete policy JSON to a private temporary file using `--output
 
 ## MCP connection
 
-The Claude and Cursor plugins retain the `.mcp.json` connection to the Prime MCP server. See [MCP configuration](../../README.md#mcp-server) for the tools and other clients. MCP authentication reads `PRIME_PAT_TOKEN` from the client environment, independently of the helper's token-file fallback. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
+The Claude and Cursor plugins connect to the Prime MCP server; see [MCP configuration](../../README.md#mcp-server). The MCP login is separate from the helper's PAT. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
 
 ## Data and limitations
 

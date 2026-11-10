@@ -1,6 +1,6 @@
 {
   "name": "prime-security-dev",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Prime Security policy guidance for the Pi coding agent, with a guardrails reminder",
   "private": true,
   "type": "module",

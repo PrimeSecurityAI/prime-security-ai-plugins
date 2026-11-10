@@ -121,7 +121,7 @@ def resolve_token():
                     raise PrimeError('unsafe_token_file', 'Restrict the Prime token file to its owner (chmod 600).')
                 token = stream.read(16385).removesuffix('\n').removesuffix('\r')
         except FileNotFoundError:
-            raise PrimeError('missing_credentials', 'Configure PRIME_PAT_TOKEN or the private Prime token file in your terminal; never paste a PAT into chat.') from None
+            raise PrimeError('missing_credentials', 'Run browser login or set PRIME_PAT_TOKEN; never paste a PAT into chat. See references/setup.md.') from None
         except (OSError, UnicodeError):
             raise PrimeError('unreadable_token_file', 'Cannot securely read the Prime token file.') from None
     if not token or len(token) > 16384 or any(ord(char) < 33 or ord(char) > 126 for char in token):
@@ -159,7 +159,7 @@ class Client:
             code = error.code
             error.close()
             if code in (401, 403):
-                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; re-run browser login or configure a valid PAT in your terminal. See references/setup.md; an environment token overrides the token file.') from None
+                raise PrimeError('authentication_failed', 'Prime rejected the credential or its permissions; re-run browser login or set a valid PRIME_PAT_TOKEN. See references/setup.md; an environment token overrides the token file.') from None
             if code == 429:
                 raise PrimeError('rate_limited', 'Prime rate limit reached; retry later.') from None
             if 300 <= code < 400:

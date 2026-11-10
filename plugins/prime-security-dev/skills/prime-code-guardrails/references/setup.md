@@ -14,7 +14,7 @@ Use the same `PRIME_API_URL` for login and guardrail requests. Complete the brow
 
 The standalone dev skill does **not** bundle the operator's login script. If it is absent, install the operator plugin or skill using the [repository installation guide](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#plugin-or-skill), or run `plugins/prime-security-operator/skills/prime/scripts/prime_login.py` from a reviewed checkout of that repository. Use the PAT setup below if you do not want the operator skill or cannot open a browser. Do not assume a sibling operator directory exists in an installed dev skill.
 
-## Credential resolution and terminal PAT setup
+## Credential resolution and PAT setup
 
 The helper resolves credentials on each invocation:
 
@@ -23,36 +23,7 @@ The helper resolves credentials on each invocation:
 
 The token file works across clients and does not depend on exports surviving between shell tool calls. On POSIX systems it must be owned by the current user, readable only by that user, and not a symlink. Use a current-user-only ACL on Windows.
 
-Paste this into **Bash or zsh** on macOS/Linux. Input is hidden and stays out of shell history. Empty or invalid input leaves the existing token unchanged:
-
-```bash
-bash -c '
-set -e
-LC_ALL=C
-IFS= read -r -s -p "Prime PAT: " prime_pat || {
-  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
-} || {
-  printf "\nNo token entered; existing token unchanged.\n" >&2
-  exit 1
-}
-printf "\n"
-prime_pat="${prime_pat%"$(printf "\r")"}"
-prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
-prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
-if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
-  printf "Invalid token; existing token unchanged.\n" >&2
-  exit 1
-fi
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
-umask 077
-mkdir -p "$config_dir"
-chmod 700 "$config_dir"
-token_tmp=$(mktemp "$config_dir/token.XXXXXX")
-trap "rm -f -- \"\$token_tmp\"" EXIT
-printf "%s\n" "$prime_pat" > "$token_tmp"
-mv -f -- "$token_tmp" "$config_dir/token"
-'
-```
+To use a PAT instead of browser login, set it as the `PRIME_PAT_TOKEN` environment variable of the process that starts the agent, for example from your CI secret store.
 
 If replacing an environment credential, restart the agent from the updated environment. A non-empty environment variable takes precedence over the token file, including an expired token.
 
@@ -82,7 +53,7 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 
 | Code | Recovery |
 |---|---|
-| `missing_credentials`, `invalid_credentials` | Configure the PAT using hidden terminal input. |
+| `missing_credentials`, `invalid_credentials` | Run browser login, or set `PRIME_PAT_TOKEN`. |
 | `unsafe_token_file`, `unreadable_token_file` | Check ownership, regular-file status, and mode 600. |
 | `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Check account permissions for 403 errors. |
 | `origin_not_approved`, `invalid_origin` | Correct the origin and explicitly approve a custom deployment. |

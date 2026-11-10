@@ -145,46 +145,9 @@ The skill resolves credentials in this order:
 
 `PRIME_API_URL` is optional and defaults to `https://api.primesec.ai`.
 
-On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead. Never paste a PAT into an agent chat. Paste this into Bash or zsh on macOS/Linux. Input is hidden. Empty or invalid input leaves the existing token unchanged:
+On machines without a browser (SSH, CI, containers), create a PAT under **Settings > Access > API Token > Create Token** instead and set it as the `PRIME_PAT_TOKEN` environment variable of the process that starts your agent, for example from your CI secret store. Never paste a PAT into an agent chat.
 
-```bash
-bash -c '
-set -e
-LC_ALL=C
-IFS= read -r -s -p "Prime PAT: " prime_pat || {
-  [ "$?" -eq 1 ] && [ -n "$prime_pat" ]
-} || {
-  printf "\nNo token entered; existing token unchanged.\n" >&2
-  exit 1
-}
-printf "\n"
-prime_pat="${prime_pat%"$(printf "\r")"}"
-prime_pat="${prime_pat#"${prime_pat%%[![:blank:]]*}"}"
-prime_pat="${prime_pat%"${prime_pat##*[![:blank:]]}"}"
-if [[ -z "$prime_pat" || "$prime_pat" == *[![:graph:]]* ]]; then
-  printf "Invalid token; existing token unchanged.\n" >&2
-  exit 1
-fi
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/prime-security"
-umask 077
-mkdir -p "$config_dir"
-chmod 700 "$config_dir"
-token_tmp=$(mktemp "$config_dir/token.XXXXXX")
-trap "rm -f -- \"\$token_tmp\"" EXIT
-printf "%s\n" "$prime_pat" > "$token_tmp"
-mv -f -- "$token_tmp" "$config_dir/token"
-'
-```
-
-On other systems, use hidden terminal input and a current-user-only ACL for the same logical token path. Do not print or log the token.
-
-The manual MCP configurations below read only the `PRIME_PAT_TOKEN` environment variable, not the token file. Export it in the shell profile or environment that starts your agent, for example from the token file:
-
-```bash
-export PRIME_PAT_TOKEN="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/token")"
-```
-
-If it is unset, the server rejects the connection with `401`.
+The manual MCP configurations below read only `PRIME_PAT_TOKEN`, not the token file. If it is unset, the server rejects the connection with `401`.
 
 ## MCP Server
 

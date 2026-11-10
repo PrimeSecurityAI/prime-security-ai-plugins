@@ -1,6 +1,6 @@
 {
   "name": "prime-security-operator",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Prime Security API skill and MCP server for security design reviews, policy search, repository analysis, and AI-assisted security conversations",
   "author": {"name": "Prime Security"},
   "repository": "https://github.com/PrimeSecurityAI/prime-security-ai-plugins",

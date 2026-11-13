@@ -7,7 +7,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 | Component | What it does | Clients |
 |---|---|---|
 | `prime-security-operator` plugin | The `prime` skill plus the Prime MCP server connection | Claude Code, Codex, GitHub Copilot CLI, Cursor |
-| `prime-security-dev` plugin | The code guardrails skill plus a session reminder that tells the agent to use it | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
+| `prime-security-dev` plugin | Managed developer guidance and explicit plan reviews, with reminder adapters | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
 | `prime` skill | Calls the Prime API using its published route documentation | Any Agent Skills client, including OpenCode, Pi, and Copilot agent mode in IDEs |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
 
@@ -319,7 +319,7 @@ The recommended installation of the cross-client Prime API skill for Claude Code
 
 ### prime-security-dev
 
-The `prime-code-guardrails` skill with safe shared credentials and a bundled API helper, packaged with a session reminder for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Install the plugin for your client, not only the skill, when guardrails should apply to every coding task. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
+The proposed unpublished `1.5.0-alpha.1` adds account-controlled guidance and recoverable explicit plan reviews through `/dev`, with safe shared credentials and reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Dedicated reviewer execution is a separate per-client release gate; automatic Claude plan capture is not enabled. Refresh effective settings before using guidance for every meaningful coding action. Ordinary coding continues when controls are off or settings fail. Older plugins use generic APIs and cannot honor these controls; rolling back loses this behavior. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 

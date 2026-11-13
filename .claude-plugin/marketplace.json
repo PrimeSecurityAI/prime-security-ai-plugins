@@ -25,7 +25,7 @@
       "name": "prime-security-dev",
       "source": "./plugins/prime-security-dev",
       "description": "Prime Security policy guidance for coding agents, with optional lifecycle reminders",
-      "version": "1.4.0",
+      "version": "1.5.0-alpha.1",
       "author": {
         "name": "Prime Security"
       },

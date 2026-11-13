@@ -1,53 +1,30 @@
 # Prime Security Dev release checklist
 
-Use this checklist before publishing a release candidate. Record results, exact client versions, operating systems, API environment, and immutable commit in the release PR. Do not attach raw policies, PATs, or private source.
+Proposed unpublished version: **1.5.0-alpha.1**. Record immutable commit, client/model versions, OS and approved API environment with each result. Local unit tests and manifest validation establish neither real reviewer execution nor customer release readiness. Operator version/behavior stays unchanged.
 
-## Automated checks
+## Local implementation checks
 
-- Python and Node suites pass on macOS and Linux, including the minimum supported Python version.
-- Complete policy artifacts are recoverable from private files; failed loads publish no artifact and existing destinations are not overwritten.
-- Schema, pagination, authentication, exact-origin approval, and repository-matching failure cases pass.
-- Claude skill/plugin/marketplace validation passes.
-- Installations include the entire skill folder and its helper/reference resources.
+- `python3 -m unittest discover -s tests -v` and `node --test tests/opencode.test.mjs tests/pi.test.mjs` pass, including Python 3.9 compatibility.
+- Feature request inventory uses only `/dev`; settings failure/disable never falls back to generic APIs or documentation.
+- Fresh settings before guidance/context/plan/retry/completion and after 409; two effective controls are independent. Ordinary coding continues on disable/settings failure; history/deletion remain possible.
+- Synthetic HTTP boundary checks prove complete private pre-send plan/request/result artifacts, original caller/origin/scope identity, exact replay after lost response/restart/changed files/credential renewal, three explicit recovery attempts and cleanup.
+- Registered hashes, evidence IDs and exact stored locations bind typed review findings; plan-only findings work without evidence. Preserve coverage/limitations and **Developer-agent review · Client-reported advisory**.
+- Claude plugin and marketplace validation accepts prerelease SemVer. Manifest/package/marketplace versions and helper User-Agent agree; host binary versions are separately truthful.
+- Entire skill folder/helper/reference resources install; no token/error bodies leak. Hidden PAT setup passes Bash and interactive zsh tests.
 
-## Live acceptance
+## Separately authorized integration gates
 
-Exercise each supported client: Claude Code, Codex, OpenCode 2.x, Cursor, GitHub Copilot (CLI plugin, plus VS Code agent mode for the standalone skill), and Pi. Use an authorized test account and disposable repositories, without production mutations.
+Use disposable synthetic plans and approved dev data. `/dev` deployment, live PAT calls, model execution, data upload and first namespace deployment require the session's authorization. No production request is implied.
 
-- Fresh install and explicit skill invocation load the complete policy set.
-- A coding request selects the skill automatically, or the documented explicit invocation reliably invokes it.
-- Missing/expired credentials produce safe recovery instructions and no false success.
-- Follow-up messages reuse the ongoing task's policies; a new independent task or repository/account change reloads them.
-- Session start/resume and compaction recovery provide guidance. Claude/Codex/Cursor/Copilot ordinary prompts do not add transcript reminders; OpenCode and Pi include guidance in each fresh system prompt without accumulating messages.
-- Copilot CLI plugin: `copilot plugin install prime-security-dev@prime` loads the skill and `hooks/copilot.json` from `.github/plugin/plugin.json` (not the Claude manifest), the sessionStart reminder reaches the model on startup, resume, and `/new`, and the hook command finds the script (record which plugin-root variable Copilot sets, and the hook working directory). Record whether the operator plugin's MCP server starts the browser login with client ID `prime-copilot`.
-- OpenCode 2.x: the `~/.config/opencode/plugins/prime-security-dev.js` wrapper loads, `context` adds one reminder per request (including after compaction and in subagent sessions), and no messages accumulate.
-- Pi: `pi install git:github.com/PrimeSecurityAI/prime-security-ai-plugins@<ref>` loads the skill and extension, the `prime_guardrails` section appears once, and disappears with `--no-skills`.
-- Optional adapters work when enabled; explicit standalone invocation works without them.
-- Large policy sets are fully read from the artifact, including policy text longer than a shell output limit.
-- Update, uninstall, and restart leave no duplicate skill or broken adapter.
-
-Verify empty-policy accounts separately from unavailable service responses. Check unregistered, uniquely matched SSH/HTTPS, and ambiguous repositories. Provider-specific remote rewrites may intentionally skip context; never guess by directory name. Windows adapters are not certified by this release.
+- Verify public `/dev` contract, gateway timeout, admin defaults (guardrails on/plans off), persistent settings/history and independent internal plan availability.
+- Exercise fresh/expired/renewed environment and file credentials, exact-origin approvals, redirects, unregistered/ambiguous scope and full private policy artifact reads.
+- For each advertised host (Claude Code, Codex, OpenCode, Cursor, Copilot, Pi), prove explicit skill selection and **one separate** reviewer invocation returning the registered hashes/typed actionable findings and truthful client/model. A main-agent final diff review or choosing a session-wide alternate agent does not establish this gate. Ship only verified capabilities; report reviewer unavailable where unsupported.
+- Change settings during reviewer execution; verify completion stops, historical snapshots are not reused for new guidance, explicit resume/new revision is required and pending receipts survive. Exercise lost POST/PUT responses and renewal across a real restart.
+- Hooks/adapters currently emit reminders only. Prove their context reaches the model on startup/resume/compaction; OpenCode/Pi do not accumulate messages. Hook fixtures do not prove settings fetch or review.
+- **Automatic Claude capture is a distinct unpassed gate.** Probe actual documented ExitPlanMode event payload in a real interactive approval flow before implementing capture. Preserve human approval, never guess plan paths/modules, block coding, auto-approve or certify review. Other adapters remain reminders unless independently validated.
+- Pin final immutable client installation, update/uninstall/restart with no duplicates. Copilot verifies plugin-root variable and working directory; Pi skill disable removes reminder; OpenCode wrapper loads/disposes correctly. Windows is unverified.
+- Complete account-closure purge before credential removal; verify server history deletion and disclose separate backup retention. Pending local receipts need explicit completion/deletion/abandonment; uninstall must preserve shared operator credentials.
 
 ## Publication and rollback
 
-- Supported API contracts and client interfaces have not drifted.
-- An approved brand icon is available if required by the target directory.
-- Installation from the final immutable release reference succeeds.
-- Complete the acceptance checks before customer rollout, then pilot with a small group.
-- Version metadata agrees across the Claude, Codex, Cursor, Copilot, and Pi (`package.json`) manifests and all marketplace entries.
-- For rollback, reinstall the previous reviewed version. OpenCode 1.x users need a 1.2.x release, whose adapter uses the 1.x plugin API. Shared token files remain usable by the operator skill.
-
-## Reference documentation
-
-- https://learn.chatgpt.com/docs/build-skills
-- https://learn.chatgpt.com/docs/hooks
-- https://developers.openai.com/plugins/build/plugins
-- https://code.claude.com/docs/en/hooks
-- https://opencode.ai/docs/skills/
-- https://opencode.ai/docs/plugins/
-- https://opencode.ai/v2/docs/build/plugins/migrate-v1
-- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md
-- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md
-- https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
-- https://docs.github.com/en/copilot/reference/hooks-configuration
-- https://docs.github.com/en/copilot/concepts/agents/about-agent-skills
+Publish only after the proven client subset and data-handling/retention policy are accepted. Old plugins call generic APIs and cannot honor account controls; rollback to them loses managed behavior. An undeployed/older backend yields a safe failure, never generic fallback. Keep an immutable reviewed release reference and pilot with a small group.

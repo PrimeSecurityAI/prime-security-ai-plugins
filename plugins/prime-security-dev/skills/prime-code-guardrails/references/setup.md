@@ -84,11 +84,18 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 |---|---|
 | `missing_credentials`, `invalid_credentials` | Configure the PAT using hidden terminal input. |
 | `unsafe_token_file`, `unreadable_token_file` | Check ownership, regular-file status, and mode 600. |
-| `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Check account permissions for 403 errors. |
+| `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Then explicitly resume the original receipt. |
 | `origin_not_approved`, `invalid_origin` | Correct the origin and explicitly approve a custom deployment. |
 | `invalid_approval_file` | Check the owner-only configuration directory, approval-file permissions, and JSON list of exact origins. |
 | `file_write_failed` | Choose a new output filename in an existing private directory. Existing files are never overwritten. |
 | `rate_limited`, `network_error`, `timeout` | Check service/connectivity and retry later; do not use stale policy data. |
-| Pagination or schema errors | Check the current unauthenticated API docs and report the contract mismatch. |
+| `permission_denied` | Request required access; a renewed credential alone may not fix 403. |
+| `feature_disabled`, `invalid_settings`, `unavailable` | Pause security operations; ordinary coding continues. Retry explicitly after current settings can be read. |
+| `context_settings_changed` | Use an explicit new submission with current context; preserve or abandon the old receipt. |
+| Schema/contract errors | Report the mismatch against [the reviewed contract](api-contract.md); update/test the helper before use. |
 
 Diagnostics never need the token, authorization header, raw HTTP error body, or private repository source.
+
+## Pending work after renewal
+
+Renew authentication without changing the original approved origin/account/owner. No token file is needed when an environment PAT is configured. Use `resume --receipt <path>` explicitly; it refreshes settings and replays the saved bytes even when original files changed. Receipts are private pending payloads, not credentials or reusable guidance. See [durable recovery and cleanup](api-contract.md#durable-recovery). History and authorized deletion remain available when security controls are off.

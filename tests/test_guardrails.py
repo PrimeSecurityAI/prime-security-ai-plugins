@@ -13,14 +13,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/prime-security-dev/skills/prime-code-guardrails/scripts/prime_guardrails.py'
-
-
-def page(items, offset=0, limit=100, total=None, has_next=False):
-    return dict(results=items, size=len(items), offset=offset, limit=limit,
-                total=total, has_next=has_next)
-
 
 class GuardrailsTests(unittest.TestCase):
     @classmethod
@@ -59,44 +52,11 @@ class GuardrailsTests(unittest.TestCase):
         self.assertEqual(self.api.validate_origin('https://private.example', 'https://private.example'),
                          'https://private.example')
 
-    def test_pagination_uses_actual_page_size(self):
-        pages = [page([{'id': 1}, {'id': 2}], limit=2, total=3, has_next=True),
-                 page([{'id': 3}], offset=2, limit=2, total=3)]
-        calls = []
-        def get(path):
-            calls.append(path)
-            return pages.pop(0)
-        self.assertEqual(len(self.api.paginate(get, '/guardrails')), 3)
-        self.assertIn('offset=2', calls[1])
-
-    def test_pagination_rejects_partial_repeated_and_inconsistent_pages(self):
-        cases = [
-            [page([{'id': 1}], total=2)],
-            [page([], total=1, has_next=True)],
-            [page([{'id': 1}], limit=1, has_next=True), page([{'id': 1}], offset=1, limit=1)],
-            [page([{'id': 1}], total=2, has_next=True), page([{'id': 2}], offset=1, total=3)],
-        ]
-        for pages in cases:
-            with self.subTest(pages=pages), self.assertRaises(self.api.PrimeError):
-                self.api.paginate(lambda _: pages.pop(0), '/guardrails')
-
-    def test_pagination_nullable_metadata_and_empty_success(self):
-        pages = [page([{'id': 1}], limit=100, has_next=None),
-                 page([{'id': 2}], offset=1, limit=100, has_next=None),
-                 page([], offset=2, limit=100, has_next=None)]
-        self.assertEqual(self.api.paginate(lambda _: pages.pop(0), '/guardrails'), [{'id': 1}, {'id': 2}])
-        self.assertEqual(self.api.paginate(lambda _: page([], total=0), '/guardrails'), [])
-
-    def test_repository_identity_and_ambiguity(self):
+    def test_repository_identity(self):
         normalize = self.api.repo_identity
         self.assertEqual(normalize('git@github.com:Acme/project.git'), normalize('https://github.com/Acme/project/'))
         self.assertNotEqual(normalize('https://one.example/org/repo'), normalize('https://two.example/org/repo'))
         self.assertIsNone(normalize('/local/repo'))
-        repo = {'id': 1, 'repo_url': 'https://github.com/Acme/project'}
-        self.assertEqual(self.api.match_repo([repo], 'git@github.com:Acme/project.git'), repo)
-        self.assertIsNone(self.api.match_repo([repo], 'git@github.com:Other/project.git'))
-        with self.assertRaises(self.api.PrimeError):
-            self.api.match_repo([repo, dict(repo, id=2)], repo['repo_url'])
 
     def test_transport_never_follows_redirects(self):
         handler = self.api.NoRedirect()
@@ -107,7 +67,7 @@ class GuardrailsTests(unittest.TestCase):
             HTTPError('https://api.primesec.ai', 401, 'secret-token', {}, io.BytesIO(b'secret-token')))})()
         client = self.api.Client('https://api.primesec.ai', 'secret-token', opener=opener)
         with self.assertRaises(self.api.PrimeError) as caught:
-            client.get('/guardrails')
+            client.get('/dev/guardrails')
         self.assertNotIn('secret-token', str(caught.exception))
         self.assertEqual(caught.exception.code, 'authentication_failed')
 
@@ -117,7 +77,7 @@ class GuardrailsTests(unittest.TestCase):
             client = self.api.Client('https://api.primesec.ai', 'secret-token', opener=opener)
             with self.subTest(error=type(error).__name__):
                 with self.assertRaises(self.api.PrimeError) as caught:
-                    client.get('/guardrails')
+                    client.get('/dev/guardrails')
                 self.assertNotIn('secret-token', str(caught.exception))
 
     def test_real_transport_refuses_redirect_before_sending_second_request(self):
@@ -136,55 +96,13 @@ class GuardrailsTests(unittest.TestCase):
         try:
             client = self.api.Client(f'http://127.0.0.1:{server.server_port}', 'synthetic-test-token')
             with self.assertRaises(self.api.PrimeError) as caught:
-                client.get('/guardrails')
+                client.get('/dev/guardrails')
             self.assertEqual(caught.exception.code, 'redirect_refused')
-            self.assertEqual(paths, ['/guardrails'])
+            self.assertEqual(paths, ['/dev/guardrails'])
         finally:
             server.shutdown()
             server.server_close()
             thread.join()
-
-    def test_load_distinguishes_empty_policies_from_failure_and_optional_context(self):
-        class FakeClient:
-            def get(inner, path):
-                if path.startswith('/guardrails?'):
-                    return page([], total=0)
-                raise self.api.PrimeError('unavailable', 'Unavailable')
-        result = self.api.load_context(FakeClient(), 'https://github.com/org/repo')
-        self.assertEqual(result['status'], 'loaded')
-        self.assertEqual(result['guardrails'], [])
-        self.assertEqual(result['repository']['status'], 'unavailable')
-        with self.assertRaises(self.api.PrimeError):
-            self.api.load_context(type('BadClient', (), {'get': lambda _, path: {}})(), None)
-
-    def test_invalid_guardrail_is_not_success(self):
-        client = type('BadClient', (), {'get': lambda _, path: page([{'guardrail_title': 'missing body'}])})()
-        with self.assertRaises(self.api.PrimeError):
-            self.api.load_context(client, None)
-
-    def test_complete_policy_load_and_unique_repository_summary(self):
-        policy = {'guardrail_title': 'Validate input', 'guardrail': 'Validate input at the boundary.'}
-        responses = {
-            '/guardrails?limit=100&offset=0': page([policy], total=1),
-            '/code-management/repositories?limit=100&offset=0': page([
-                {'id': 7, 'repo_url': 'https://github.com/org/repo.git'}], total=1),
-            '/code-management/repositories/7?detailed_summary_required=true': {
-                'id': 7, 'analysis': {'concise_summary': 'An API', 'detailed_summary': None}},
-        }
-        client = type('FakeClient', (), {'get': lambda _, path: responses[path]})()
-        result = self.api.load_context(client, 'git@github.com:org/repo.git')
-        self.assertEqual(result['guardrails'], [policy])
-        self.assertEqual(result['repository'], {
-            'status': 'loaded', 'id': 7, 'concise_summary': 'An API', 'detailed_summary': None})
-
-    def test_failure_on_second_page_does_not_return_partial_policies(self):
-        def get(path):
-            if 'offset=0' in path:
-                return page([{'guardrail_title': 'First', 'guardrail': 'Policy'}], total=2, has_next=True)
-            raise self.api.PrimeError('network_error', 'Unavailable')
-        client = type('FakeClient', (), {'get': lambda _, path: get(path)})()
-        with self.assertRaises(self.api.PrimeError):
-            self.api.load_context(client, None)
 
     def test_missing_credentials_cli_does_not_print_traceback_or_succeed(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -195,12 +113,7 @@ class GuardrailsTests(unittest.TestCase):
         self.assertNotIn('Traceback', result.stderr)
 
     def test_large_output_is_recoverable_private_and_compact(self):
-        policy = {'guardrail_title': 'Validate', 'guardrail': 'x' * 50000,
-                  'category': 'Validation', 'quote': 'unnecessary', 'external_id': 'id'}
-        client = type('FakeClient', (), {'get': lambda _, path: page([policy], total=1)})()
-        result = self.api.load_context(client, None)
-        self.assertNotIn('quote', result['guardrails'][0])
-        self.assertNotIn('external_id', result['guardrails'][0])
+        result = {'status': 'loaded', 'context': {'policies': [{'guardrail': 'x' * 50000}]}}
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / 'policies.json'
             with patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
@@ -210,10 +123,9 @@ class GuardrailsTests(unittest.TestCase):
                  patch('sys.stdout', new_callable=io.StringIO) as stdout:
                 self.assertEqual(self.api.main(), 0)
             status = json.loads(stdout.getvalue())
-            self.assertEqual(status['guardrail_count'], 1)
             self.assertEqual(status['output_path'], str(output))
             self.assertLess(len(stdout.getvalue()), 1000)
-            self.assertEqual(json.loads(output.read_text())['guardrails'][0]['guardrail'], 'x' * 50000)
+            self.assertEqual(json.loads(output.read_text())['context']['policies'][0]['guardrail'], 'x' * 50000)
             if os.name == 'posix':
                 self.assertEqual(output.stat().st_mode & 0o777, 0o600)
 
@@ -253,14 +165,6 @@ class GuardrailsTests(unittest.TestCase):
                 self.assertEqual(self.api.main(), 1)
             self.assertFalse(output.exists())
 
-    def test_same_title_policies_keep_their_source_identity(self):
-        policies = [dict(guardrail_title='Validation', guardrail='Validate input', framework='OWASP_ASVS',
-                         policy_name='API policy', policy_id=1),
-                    dict(guardrail_title='Validation', guardrail='Validate input', framework='OWASP_LLM',
-                         policy_name='AI policy', policy_id=2)]
-        client = type('FakeClient', (), {'get': lambda _, path: page(policies, total=2)})()
-        self.assertEqual(self.api.load_context(client, None)['guardrails'], policies)
-
     def test_broken_saved_approvals_only_block_requests_that_depend_on_them(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / 'prime-security/approved-origins.json'
@@ -281,7 +185,6 @@ class GuardrailsTests(unittest.TestCase):
                     self.assertEqual(self.api.main(), expected)
                     if expected:
                         self.assertEqual(json.loads(stdout.getvalue())['code'], 'invalid_approval_file')
-
 
 if __name__ == '__main__':
     unittest.main()

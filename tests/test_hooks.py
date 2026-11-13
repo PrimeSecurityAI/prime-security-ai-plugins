@@ -22,6 +22,12 @@ class HookTests(unittest.TestCase):
                 self.assertEqual(context['hookEventName'], 'SessionStart')
                 self.assertIn('prime-code-guardrails', context['additionalContext'])
 
+    def test_reminder_requires_current_settings_before_meaningful_action(self):
+        result = self.invoke({'hook_event_name': 'SessionStart'})
+        context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
+        self.assertIn('fresh settings', context)
+        self.assertIn('ordinary coding', context)
+
     def test_cursor_session_start_provides_context(self):
         result = self.invoke({'hook_event_name': 'sessionStart', 'composer_mode': 'agent'})
         self.assertIn('prime-code-guardrails', json.loads(result.stdout)['additional_context'])
@@ -56,6 +62,9 @@ class HookTests(unittest.TestCase):
                     manifest = json.loads((plugin / folder / 'plugin.json').read_text())
                     version = json.loads((plugin / '.claude-plugin/plugin.json').read_text())['version']
                     self.assertEqual((manifest['name'], manifest['version'], entry.get('version', version)), (entry['name'], version, version))
+                    if entry['name'] == 'prime-security-dev':
+                        helper = (ROOT / 'skills/prime-code-guardrails/scripts/prime_guardrails.py').read_text()
+                        self.assertIn("RELEASE_VERSION = '" + version + "'", helper)
                     if folder == '.cursor-plugin':
                         self.assertTrue((plugin / manifest['logo']).is_file())
 

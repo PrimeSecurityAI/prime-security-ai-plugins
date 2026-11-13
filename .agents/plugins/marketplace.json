@@ -12,7 +12,7 @@
       "name": "prime-security-dev",
       "source": "./plugins/prime-security-dev",
       "description": "Prime Security policy guidance for coding agents",
-      "version": "1.4.0"
+      "version": "1.5.0-alpha.1"
     }
   ]
 }

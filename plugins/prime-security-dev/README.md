@@ -1,12 +1,12 @@
 # prime-security-dev
 
-Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The portable `prime-code-guardrails` skill fetches current policies and optional repository architecture context, then guides implementation and diff review.
+Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The proposed unpublished `1.5.0-alpha.1` uses account-controlled `/dev` guidance, bounded stored safeguards/KB and recoverable explicit plan reviews. The helper requires Python 3.9+. Dedicated reviewer support must pass a separate real-client release gate for each advertised host; automatic Claude plan capture remains disabled.
 
 This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
 
 ## Requirements
 
-- Python 3.10+ available as `python3` in the client's execution environment.
+- Python 3.9+ on macOS/Linux available as `python3` in the client's execution environment.
 - A Prime Security PAT and HTTPS access to the configured Prime API.
 - Git for optional repository context.
 - Node.js 22.20+ and `npx` when using the Skills CLI.
@@ -118,18 +118,18 @@ Follow [the terminal-only setup instructions](skills/prime-code-guardrails/refer
 
 The description also allows automatic skill selection, but selection is model-dependent. The plugin reminders make selection reliable; without a plugin, add a repository instruction in the client's supported rules file requiring `prime-code-guardrails` before code changes, or invoke it explicitly.
 
-The agent saves complete policy JSON to a private temporary file using `--output`, reads all policies in bounded chunks, applies relevant policies, and reports the titles that influenced its changes. Follow-up messages reuse policies within the ongoing task. It reloads for a new independent task, repository/account change, or loss of policy context. Empty policies and failed loading are different outcomes; failed loading never authorizes proceeding as if there were no requirements.
+The agent saves complete policy JSON to a private temporary file using `--output`, reads all policies in bounded chunks, applies relevant policies, and reports the titles that influenced its changes. Before each meaningful coding action, including a continued implementation step, it checks fresh effective settings. It checks again before every guidance/context/plan/retry/completion and after HTTP 409. Guidance and plan controls are independent. Confirmed disable discards reusable guidance; settings failure pauses security operations while ordinary coding continues. Empty policies and failed loading are different outcomes.
 
 ## MCP connection
 
-The Claude and Cursor plugins connect to the Prime MCP server; see [MCP configuration](../../README.md#mcp-server). The MCP login is separate from the helper's PAT. The helper's custom-origin approval and read-only behavior apply to the helper, not to independently configured MCP tools; review MCP destinations and calls through the client's permissions.
+The Claude and Cursor plugins connect to the Prime MCP server; see [MCP configuration](../../README.md#mcp-server). The MCP login is separate from the helper's PAT. The helper's exact-origin approval applies to its requests. Independently configured MCP tools use the client's permissions; managed developer features always use `/dev`, including recovery.
 
 ## Data and limitations
 
-- The helper performs read-only policy/repository requests. It does not upload source, start scans, or modify Prime configuration.
+- The helper reads managed guidance; explicit plan registration uploads Markdown and completion uploads review JSON. Scope/context requests send normalized remote, IDs, relative paths and intent. It starts no scans and does not modify account settings.
 - Policies and summaries enter the agent's context and are subject to your AI provider's data handling. `--output` saves a task artifact, not an automatically reused policy cache. Use a private temporary directory outside the repository and delete the artifact after the task.
 - Reminders are advisory; there is no “loaded” marker that could falsely certify success.
-- Unregistered, ambiguous, or unsupported repository remotes produce no repository summary. Policies still apply.
+- Unregistered or ambiguous scope requires explicit connect/select and retry; unsupported remotes require explicit registered scope. The helper never guesses a module or falls back to account-wide policies.
 
 ## Update and remove
 
@@ -157,7 +157,7 @@ For plugins:
 
 Restart affected clients.
 
-Removing the plugin/skill does not delete shared credentials, saved origin approvals, or task output files. Delete the Prime token file only when no other Prime integration needs it. Existing legacy `.claude/state/guardrails-loaded-*` markers are no longer consulted; they can be removed after upgrading. Older versions' `~/.local/state/prime-security` edit logs are no longer produced or consumed; remove them if no longer needed.
+Removing the plugin/skill does not delete shared credentials, saved origin approvals, task output files, or private pending receipts under `${XDG_STATE_HOME:-$HOME/.local/state}/prime-security/developer-receipts`. Before removal, explicitly resume pending submissions or use `resume --receipt <path> --abandon` to remove their local payloads. Server history requires separate authorized deletion. Delete the Prime token file only when no other Prime integration needs it. Existing legacy `.claude/state/guardrails-loaded-*` markers are no longer consulted; they can be removed after upgrading. Older versions' `~/.local/state/prime-security` edit logs are no longer produced or consumed; remove them if no longer needed.
 
 ## Release validation
 
@@ -174,3 +174,9 @@ See [the release checklist](../../docs/prime-security-dev-release.md) for requir
 ## License
 
 MIT
+
+## Managed alpha compatibility
+
+`1.5.0-alpha.1` is proposed and unpublished. It requires the reviewed `/dev` backend; an older server or settings failure has no generic API fallback. Older plugin versions cannot honor account controls, so rollback loses that behavior. Dev guardrails defaults on and Security plan defaults off; use effective settings, including internal plan availability restrictions.
+
+Explicit plan review registers immutable Markdown/context, invokes one separate host reviewer, validates its typed findings and records **Developer-agent review · Client-reported advisory**. No self-review substitute or security approval is implied. See [the managed workflow contract](skills/prime-code-guardrails/references/api-contract.md) for commands and exact-byte restart/credential-renewal recovery. All adapters remain reminders until their separate execution/capture gates pass. Server records remain until owner/admin deletion; backup retention is separate. Operator behavior and version are unchanged.

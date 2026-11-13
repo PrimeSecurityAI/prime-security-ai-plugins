@@ -160,6 +160,7 @@ class Client:
             messages = {
                 401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file. Then resume explicitly.'),
                 403: ('permission_denied', 'The credential lacks permission; request the required access before explicit recovery.'),
+                404: ('not_found', 'The requested developer record is absent or inaccessible to this caller.'),
                 409: (code if code != 'http_error' else 'conflict', 'Developer request conflict; check fresh settings and use an explicit new revision for changed content or context.'),
                 422: ('invalid_input', 'Prime rejected the input; check the reviewed developer contract.'),
                 429: ('rate_limited', 'Prime rate limit reached; retry explicitly later.'),
@@ -497,16 +498,66 @@ class DeveloperWorkflow:
         return self.request('GET', '/dev/plans/' + str(plan_id))
 
     def delete(self, plan_id):
-        record = self.get(plan_id)
-        self.request('DELETE', '/dev/plans/' + str(plan_id))
-        keys = ('client', 'session_id', 'plan_key', 'submission_id', 'repository_id', 'module_id')
-        for path in receipt_directory(self.repo).glob('*.json'):
-            receipt = Receipt.load(path, self.repo)
-            request = json.loads(receipt.request_bytes)
-            if ((receipt.origin, receipt.account_id, receipt.owner_id) == (self.client.origin, record['account_id'], record['owner_id'])
-                    and all(request[key] == record[key] for key in keys)):
+        try:
+            record = self.get(plan_id)
+        except PrimeError as error:
+            if error.code != 'not_found':
+                raise
+            record = None
+        directory = receipt_directory(self.repo)
+        paths, cleanup = [], 'complete'
+        if record is not None:
+            if record.get('id') != plan_id:
+                raise PrimeError('invalid_plan_response', 'Plan identity did not match the requested deletion; no deletion was sent.')
+            key = [self.client.origin, record['account_id'], record['owner_id']] + [record[key] for key in ('client', 'session_id', 'plan_key', 'submission_id')]
+            path = directory / (hashlib.sha256(json_bytes(key)).hexdigest() + '.json')
+            if path.exists():
+                try:
+                    receipt = Receipt.load(path, self.repo)
+                    if (receipt.origin, receipt.account_id, receipt.owner_id) != (self.client.origin, record['account_id'], record['owner_id']):
+                        raise ValueError('Mismatched receipt')
+                    self.validate_record(receipt, record)
+                    receipt.registered = record
+                    receipt.save(path)
+                    paths.append(path)
+                except (PrimeError, KeyError, TypeError, ValueError):
+                    cleanup = 'unconfirmed'
+        else:
+            cleanup = 'unconfirmed'
+            try:
+                controls = self.settings()
+            except PrimeError:
+                controls = None
+            if controls is not None:
+                for path in directory.glob('*.json'):
+                    try:
+                        receipt = Receipt.load(path, self.repo)
+                        if ((receipt.origin, receipt.account_id, receipt.owner_id) != (self.client.origin, controls.account_id, controls.owner_id)
+                                or not isinstance(receipt.registered, dict) or receipt.registered.get('id') != plan_id):
+                            continue
+                        self.validate_record(receipt, receipt.registered)
+                        paths.append(path)
+                        cleanup = 'complete'
+                    except (PrimeError, KeyError, TypeError, ValueError):
+                        continue
+        server_status = 'deleted'
+        try:
+            self.request('DELETE', '/dev/plans/' + str(plan_id))
+        except PrimeError as error:
+            if error.code != 'not_found':
+                if paths:
+                    error.receipt = str(paths[0])
+                raise
+            server_status = 'absent_or_inaccessible'
+        for path in paths:
+            try:
                 path.unlink()
-        return {'status': 'deleted', 'plan_id': plan_id}
+            except OSError:
+                cleanup = 'unconfirmed'
+        result = {'status': 'deleted', 'plan_id': plan_id, 'server_status': server_status, 'local_cleanup': cleanup}
+        if cleanup == 'unconfirmed':
+            result.update(receipt_directory=str(directory), message='Server record deleted or absent/inaccessible to this caller; local cleanup unconfirmed. Inspect remaining private receipts and explicitly remove a chosen payload with resume --abandon --receipt "<path>"; abandonment does not delete server data.')
+        return result
 
     def abandon(self, path):
         path = Path(path).absolute()

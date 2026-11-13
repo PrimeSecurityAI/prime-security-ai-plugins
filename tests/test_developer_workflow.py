@@ -42,6 +42,7 @@ class Boundary:
         self.rows = {}
         self.lose_post = False
         self.lose_put = False
+        self.lose_delete = False
         self.fail_settings = False
         self.conflict = None
         self.before_send = None
@@ -84,9 +85,16 @@ class Boundary:
                 raise OSError('Lost response ' + TOKEN)
             return io.BytesIO(json.dumps(row).encode())
         if path == '/dev/plans/11' and method == 'DELETE':
+            if not self.rows:
+                raise HTTPError(request.full_url, 404, 'Absent', {}, io.BytesIO(b''))
             self.rows.clear()
+            if self.lose_delete:
+                self.lose_delete = False
+                raise OSError('Lost response ' + TOKEN)
             return io.BytesIO(b'')
         if path == '/dev/plans/11':
+            if not self.rows:
+                raise HTTPError(request.full_url, 404, 'Absent', {}, io.BytesIO(b''))
             return io.BytesIO(json.dumps(next(iter(self.rows.values()))).encode())
         if path.startswith('/dev/plans?'):
             return io.BytesIO(json.dumps(dict(results=[], size=0, offset=0, limit=100, total=0, has_next=False)).encode())
@@ -306,6 +314,70 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.boundary.fail_settings = True
         self.workflow.delete(11)
         self.assertEqual(list(receipt.parent.iterdir()), [])
+
+    def test_committed_delete_response_loss_recovers_after_restart_with_renewed_credential(self):
+        self.boundary.lose_post = True
+        with self.assertRaises(self.api.PrimeError):
+            self.register()
+        receipt = self.receipt()
+        self.boundary.lose_delete = True
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.delete(11)
+        self.assertEqual(self.boundary.rows, {})
+        self.assertTrue(receipt.exists())
+        self.boundary.controls = settings(False, False)
+        restarted = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, 'renewed-synthetic-token', self.boundary), self.repo)
+        result = restarted.delete(11)
+        self.assertEqual(result['status'], 'deleted')
+        self.assertEqual(result['server_status'], 'absent_or_inaccessible')
+        self.assertEqual(result['local_cleanup'], 'complete')
+        self.assertEqual(list(receipt.parent.iterdir()), [])
+
+    def test_unrelated_corrupt_receipt_cannot_strand_matching_deleted_payload(self):
+        directory = self.api.receipt_directory(self.repo)
+        unrelated = directory / '000-unrelated.json'
+        unrelated.write_text('invalid JSON')
+        unrelated.chmod(0o600)
+        self.register()
+        result = self.workflow.delete(11)
+        self.assertEqual(result['server_status'], 'deleted')
+        self.assertEqual(result['local_cleanup'], 'complete')
+        self.assertEqual(list(directory.iterdir()), [unrelated])
+        self.assertEqual(self.boundary.rows, {})
+
+    def test_absent_delete_preserves_receipt_until_trusted_owner_cleanup_or_abandonment(self):
+        self.register()
+        receipt = self.receipt()
+        self.boundary.lose_delete = True
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.delete(11)
+        for controls, origin, unavailable in ((settings(account='other'), ORIGIN, False),
+                                             (settings(owner='admin'), ORIGIN, False),
+                                             (settings(), 'https://other.example.invalid', False),
+                                             (settings(), ORIGIN, True)):
+            self.boundary.controls, self.boundary.fail_settings = controls, unavailable
+            workflow = self.api.DeveloperWorkflow(self.api.Client(origin, TOKEN, self.boundary), self.repo)
+            with self.subTest(controls=controls, origin=origin, unavailable=unavailable):
+                result = workflow.delete(11)
+                self.assertEqual(result['status'], 'deleted')
+                self.assertEqual(result['server_status'], 'absent_or_inaccessible')
+                self.assertEqual(result['local_cleanup'], 'unconfirmed')
+                self.assertIn('resume --abandon --receipt', result['message'])
+                self.assertTrue(receipt.exists())
+        self.workflow.abandon(receipt)
+        self.assertEqual(list(receipt.parent.iterdir()), [])
+
+    def test_unconfirmed_delete_preserves_pending_payload(self):
+        self.register()
+        receipt = self.receipt()
+        def failed_delete(method, path, body):
+            if method == 'DELETE':
+                raise OSError('Request did not reach server')
+        self.boundary.before_send = failed_delete
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.delete(11)
+        self.assertEqual(len(self.boundary.rows), 1)
+        self.assertTrue(receipt.exists())
 
     def test_plan_only_review_can_record_findings_without_stored_evidence(self):
         self.boundary.controls = settings(False, True)

@@ -1,6 +1,6 @@
 # prime-security-dev
 
-Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The proposed unpublished `1.5.0-alpha.1` uses account-controlled `/dev` guidance, bounded stored safeguards/KB and recoverable explicit plan reviews. The helper requires Python 3.9+. Dedicated reviewer support must pass a separate real-client release gate for each advertised host; automatic Claude plan capture remains disabled.
+Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The proposed unpublished `1.5.0-alpha.1` uses account-controlled `/dev` guidance, canonical scoped guidance/context, saved advisory plan reviews, explicit PR requests and mitigation reporting. The helper requires Python 3.9+. Dedicated reviewer support must pass a separate real-client release gate for each advertised host; automatic Claude plan capture remains disabled.
 
 This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
 
@@ -102,7 +102,7 @@ Manual alternative: copy the **entire** `skills/prime-code-guardrails` directory
 
 Follow [the terminal-only setup instructions](skills/prime-code-guardrails/references/setup.md). Credentials resolve from `PRIME_PAT_TOKEN`, then the private shared token file. Never paste a PAT into chat or put it in a repository.
 
-`PRIME_API_URL` is optional. Custom HTTPS origins support one-time invocation approval or saved trust for an exact origin, as described in the setup instructions. No client settings files are edited by the skill.
+For alpha dev acceptance, set `PRIME_API_URL="$publicF"` to the verified, user-authorized HTTPS dev front-service origin in the environment launching the client and pass `--allow-origin "$publicF"` on every helper invocation. The distributed default origin remains unchanged. Custom origins support per-invocation approval or explicitly saved trust, as described in setup. The skill does not edit client settings.
 
 ## Use it
 
@@ -118,7 +118,7 @@ Follow [the terminal-only setup instructions](skills/prime-code-guardrails/refer
 
 The description also allows automatic skill selection, but selection is model-dependent. The plugin reminders make selection reliable; without a plugin, add a repository instruction in the client's supported rules file requiring `prime-code-guardrails` before code changes, or invoke it explicitly.
 
-The agent saves complete policy JSON to a private temporary file using `--output`, reads all policies in bounded chunks, applies relevant policies, and reports the titles that influenced its changes. Before each meaningful coding action, including a continued implementation step, it checks fresh effective settings. It checks again before every guidance/context/plan/retry/completion and after HTTP 409. Guidance and plan controls are independent. Confirmed disable discards reusable guidance; settings failure pauses security operations while ordinary coding continues. Empty policies and failed loading are different outcomes.
+The agent saves complete policy JSON to a private temporary file using `--output`, reads all policies in bounded chunks, applies relevant policies, and reports the titles that influenced its changes. Before each meaningful coding action, including a continued implementation step, it checks fresh settings (`dev_guardrails_enabled`, `security_plan_enabled`). Gated guidance/context/register/save operations read settings again; reviewer dispatch also requires a fresh host check. HTTP 409 pauses the operation and refreshes settings without replay. Guidance and plan controls are independent. Confirmed disable discards reusable guidance; settings failure pauses security operations while ordinary coding continues. Empty policies and failed loading are different outcomes.
 
 ## MCP connection
 
@@ -126,10 +126,10 @@ The Claude and Cursor plugins connect to the Prime MCP server; see [MCP configur
 
 ## Data and limitations
 
-- The helper reads managed guidance; explicit plan registration uploads Markdown and completion uploads review JSON. Scope/context requests send normalized remote, IDs, relative paths and intent. It starts no scans and does not modify account settings.
+- The helper reads managed guidance; explicit plan registration uploads Markdown and review saving uploads JSON. Scope/context requests send canonical code references and intent; source files and credential-bearing remotes are not uploaded. Explicit PR-review requests ask CMS to start/reuse its job; the accepted job ID does not establish review completion. Explicit outcome reporting records only developer-confirmed issue IDs from the original context. The helper does not modify account settings.
 - Policies and summaries enter the agent's context and are subject to your AI provider's data handling. `--output` saves a task artifact, not an automatically reused policy cache. Use a private temporary directory outside the repository and delete the artifact after the task.
 - Reminders are advisory; there is no “loaded” marker that could falsely certify success.
-- Unregistered or ambiguous scope requires explicit connect/select and retry; unsupported remotes require explicit registered scope. The helper never guesses a module or falls back to account-wide policies.
+- Supported GitHub/GitLab/Bitbucket Cloud remotes derive canonical repository identity locally, preserving spelling and GitLab subgroups. Uploaded/self-hosted scope requires explicit organization/repository/platform. The server resolves connected repositories/modules; the helper never guesses module IDs. Revisions are explicit or use the server default branch.
 
 ## Update and remove
 
@@ -157,7 +157,7 @@ For plugins:
 
 Restart affected clients.
 
-Removing the plugin/skill does not delete shared credentials, saved origin approvals, task output files, or private pending receipts under `${XDG_STATE_HOME:-$HOME/.local/state}/prime-security/developer-receipts`. Before removal, explicitly resume pending submissions or use `resume --receipt <path> --abandon` to remove their local payloads. Server history requires separate authorized deletion. Delete the Prime token file only when no other Prime integration needs it. Existing legacy `.claude/state/guardrails-loaded-*` markers are no longer consulted; they can be removed after upgrading. Older versions' `~/.local/state/prime-security` edit logs are no longer produced or consumed; remove them if no longer needed.
+Removing the plugin/skill preserves shared credentials, saved origin approvals and task artifacts. Legacy files under `${XDG_STATE_HOME:-$HOME/.local/state}/prime-security/developer-receipts` are no longer consumed or modified; explicitly inspect/remove only old task-owned files you no longer need. Server history requires authorized deletion. Delete the shared token only when no other integration needs it. Legacy `.claude/state/guardrails-loaded-*` markers and older edit logs are no longer consulted.
 
 ## Release validation
 
@@ -177,6 +177,8 @@ MIT
 
 ## Managed alpha compatibility
 
-`1.5.0-alpha.1` is proposed and unpublished. It requires the reviewed `/dev` backend; an older server or settings failure has no generic API fallback. Older plugin versions cannot honor account controls, so rollback loses that behavior. Dev guardrails defaults on and Security plan defaults off; use effective settings, including internal plan availability restrictions.
+`1.5.0-alpha.1` remains proposed and unpublished. It requires the current canonical `/dev` backend. Dev guardrails defaults on and Security plan defaults off; their persisted booleans are independent. Older servers/settings failures pause security work without a generic API fallback.
 
-Explicit plan review registers immutable Markdown/context, invokes one separate host reviewer, validates its typed findings and records **Developer-agent review · Client-reported advisory**. No self-review substitute or security approval is implied. See [the managed workflow contract](skills/prime-code-guardrails/references/api-contract.md) for commands and exact-byte restart/credential-renewal recovery. All adapters remain reminders until their separate execution/capture gates pass. Server records remain until owner/admin deletion; backup retention is separate. Operator behavior and version are unchanged.
+The direct plan sequence is register → GET normalized Markdown/snapshot → one actual separate host reviewer → save advisory with server `saved_at` → requested history/delete. Every registration creates another row and fresh context; review PUT replaces the result. After uncertain writes inspect history before explicitly repeating them. Guidance can change while a registered plan remains reviewable with plans enabled. See [the workflow contract](skills/prime-code-guardrails/references/api-contract.md) for exact commands, reviewer JSON, PR acceptance, outcomes and recovery.
+
+Local Python/Node tests cover the helper's synthetic HTTP contract and reminder adapters; manifest validation covers packaging. No real client has yet passed this canonical alpha's installation, authentication and separate-review journey. Claude acceptance is pending; Codex, OpenCode, Cursor, Copilot and Pi have their own pending real-client gates. Automatic Claude plan capture remains disabled. No self-review or security approval is implied. Server records remain until owner/admin deletion; backup retention is separate. Operator behavior/version is unchanged.

@@ -1,38 +1,53 @@
 import importlib.util
 import io
 import json
-import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/prime-security-dev/skills/prime-code-guardrails/scripts/prime_guardrails.py'
 ORIGIN = 'https://developer.example.invalid'
 TOKEN = 'synthetic-private-credential'
+CONTEXT_ID = 'ddac2218-8962-40c2-8b19-6dd146f497f5'
+REPO = dict(organization='Example/Group', repository='App', platform='gitlab')
+REF = dict(REPO, branch='feature/refunds', filename='src/api.py')
+EVIDENCE_REF = dict(organization='Shared', repository='Library', platform='github', commit='abc', filename='auth.py', line_number=4)
+SAVED_AT = '2026-11-16T10:00:00Z'
 
 
-def settings(guards=True, plans=True, account='account', owner='owner'):
+def settings(guards=True, plans=True):
     return dict(dev_guardrails_enabled=guards, security_plan_enabled=plans,
-                effective_dev_guardrails_enabled=guards, effective_security_plan_enabled=plans,
-                revision=1, caller=dict(account_id=account, user_id=owner))
+                caller=dict(account_id='account', user_id='owner'), updated_at=None, updated_by=None)
 
 
-def context(guards=True):
-    return dict(repository_id=7, module_id=9, guardrails_included=guards, policies=[], packages=[],
-                evidence=[dict(id='stored-1', kind='safeguard', source_entity_id='42', text='Stored analysis',
-                               locations=[dict(path='src/api.py', start_line=4, end_line=8, commit='abc')])],
-                fetched_at='2026-11-13T00:00:00Z', limitations=['Stored analysis; uncommitted code not verified.'])
+def context(guards=True, references=None):
+    return dict(context_id=CONTEXT_ID, code_references=references or [REF], guardrails_included=guards,
+                policies=[dict(external_id='policy-1', guardrail_title='Ownership', guardrail='Validate account ownership.')] if guards else [],
+                packages=[], evidence=[dict(id='issue-42', kind='code_issue', source_entity_id='42', text='Stored analysis',
+                                           code_references=[EVIDENCE_REF], references=['https://example.invalid/evidence'],
+                                           source_updated_at=None, requested_entity_id=None, safeguard=None, code_issue=None, component=None)],
+                references=[], fetched_at=SAVED_AT, source_updated_at=None,
+                unavailable_sources=['architecture'], truncated_sources=['knowledge_base'],
+                limitations=['Stored analysis; uncommitted code not verified.'])
 
 
-def review(record):
-    return dict(plan_hash=record['plan_hash'], context_hash=record['context_hash'], outcome='recorded',
-                reviewer_client='codex', reviewer_model='actual-test-model', summary='Check trust boundaries.',
-                findings=[dict(severity='high', explanation='Plan says to trust all input.',
-                               suggested_action='Validate input.', evidence_ids=[], locations=[])],
-                limitations=['Plan-only finding; stored analysis may be stale.'])
+def review():
+    return dict(outcome='recorded', reviewer_client='claude-code', reviewer_model='actual-test-model',
+                summary='Check account ownership.', findings=[dict(severity='HIGH',
+                explanation='Plan says "Trust all input."', suggested_action='Validate input.',
+                evidence_ids=['issue-42'], code_references=[EVIDENCE_REF])],
+                limitations=['Stored analysis may be stale; uncommitted code not verified.'])
+
+
+class Response(io.BytesIO):
+    def __init__(self, value=None, status=200):
+        super().__init__(json.dumps(value).encode() if value is not None else b'')
+        self.status = status
+
+    def getcode(self):
+        return self.status
 
 
 class Boundary:
@@ -40,65 +55,69 @@ class Boundary:
         self.calls = []
         self.controls = settings()
         self.rows = {}
+        self.pr_receipts = []
+        self.fail_settings = False
         self.lose_post = False
         self.lose_put = False
-        self.lose_delete = False
-        self.fail_settings = False
-        self.conflict = None
-        self.before_send = None
-        self.empty_evidence = False
+        self.conflict = False
+        self.snapshot = None
+        self.saved_at = SAVED_AT
 
     def open(self, request, timeout):
-        method, path, body = request.get_method(), urlsplit(request.full_url).path + ('?' + urlsplit(request.full_url).query if urlsplit(request.full_url).query else ''), request.data
-        self.calls.append((method, path, body, request.headers))
+        url = urlsplit(request.full_url)
+        method, path = request.get_method(), url.path
+        payload = json.loads(request.data) if request.data is not None else None
+        self.calls.append((method, path, parse_qs(url.query), json.loads(request.data) if request.data is not None else None, request.headers))
         if path == '/dev/settings':
             if self.fail_settings:
                 raise HTTPError(request.full_url, 503, TOKEN, {}, io.BytesIO(TOKEN.encode()))
-            return io.BytesIO(json.dumps(self.controls).encode())
-        if self.before_send:
-            self.before_send(method, path, body)
+            return Response(self.controls)
         if self.conflict:
-            detail, self.conflict = self.conflict, None
-            raise HTTPError(request.full_url, 409, TOKEN, {}, io.BytesIO(json.dumps({'detail': detail}).encode()))
-        if path == '/dev/repositories/resolve':
-            return io.BytesIO(json.dumps(dict(status='resolved', repository_id=7, module_id=9)).encode())
-        if path.startswith('/dev/guardrails?') or path == '/dev/context':
-            return io.BytesIO(json.dumps(context()).encode())
+            self.conflict = False
+            raise HTTPError(request.full_url, 409, TOKEN, {}, io.BytesIO(TOKEN.encode()))
+        if path in ('/dev/guardrails', '/dev/context'):
+            return Response(self.snapshot or context(references=payload['code_references']))
         if path == '/dev/plans' and method == 'POST':
-            payload = json.loads(body)
-            key = payload['submission_id']
-            self.rows.setdefault(key, dict(payload, id=11, account_id='account', owner_id='owner',
-                                         status='registered', guardrails_included=self.controls['effective_dev_guardrails_enabled'],
-                                         request_hash='server-request-hash', plan_hash='server-plan-hash', context_hash='server-context-hash',
-                                         context_snapshot=context(self.controls['effective_dev_guardrails_enabled']), review_result=None))
-            if self.empty_evidence:
-                self.rows[key]['context_snapshot']['evidence'] = []
+            plan_id = len(self.rows) + 11
+            snapshot = self.snapshot or context(self.controls['dev_guardrails_enabled'], payload['code_references'])
+            self.rows[plan_id] = dict(payload, markdown=payload['markdown'].replace('\r\n', '\n').replace('\r', '\n'),
+                                     id=plan_id, account_id='account', owner_id='owner', status='registered',
+                                     created_at=SAVED_AT, base_commit_ref=payload.get('base_commit_ref'),
+                                     guardrails_included=snapshot['guardrails_included'], context_snapshot=snapshot, review_result=None)
             if self.lose_post:
                 self.lose_post = False
                 raise OSError('Lost response ' + TOKEN)
-            return io.BytesIO(json.dumps(self.rows[key]).encode())
-        if path == '/dev/plans/11/review':
-            row = next(iter(self.rows.values()))
-            row.update(status='review_recorded', review_result=json.loads(body))
+            return Response(dict(id=plan_id, context_snapshot=snapshot))
+        if path.endswith('/review'):
+            row = self.rows[int(path.split('/')[3])]
+            saved = dict(payload, findings=payload.get('findings', []), limitations=payload.get('limitations', []),
+                         failure_code=payload.get('failure_code'), saved_at=self.saved_at)
+            for finding in saved['findings']:
+                finding.setdefault('evidence_ids', [])
+                finding.setdefault('code_references', [])
+                finding['code_references'] = [
+                    {key: ref.get(key) for key in ('organization', 'repository', 'platform', 'branch', 'commit', 'pull_request', 'filename', 'line_number', 'end_line_number')}
+                    for ref in finding['code_references']]
+            row.update(status='review_' + ('recorded' if payload['outcome'] == 'recorded' else 'failed'), review_result=saved)
             if self.lose_put:
                 self.lose_put = False
                 raise OSError('Lost response ' + TOKEN)
-            return io.BytesIO(json.dumps(row).encode())
-        if path == '/dev/plans/11' and method == 'DELETE':
-            if not self.rows:
-                raise HTTPError(request.full_url, 404, 'Absent', {}, io.BytesIO(b''))
-            self.rows.clear()
-            if self.lose_delete:
-                self.lose_delete = False
-                raise OSError('Lost response ' + TOKEN)
-            return io.BytesIO(b'')
-        if path == '/dev/plans/11':
-            if not self.rows:
-                raise HTTPError(request.full_url, 404, 'Absent', {}, io.BytesIO(b''))
-            return io.BytesIO(json.dumps(next(iter(self.rows.values()))).encode())
-        if path.startswith('/dev/plans?'):
-            return io.BytesIO(json.dumps(dict(results=[], size=0, offset=0, limit=100, total=0, has_next=False)).encode())
-        raise AssertionError('Unexpected feature route: ' + path)
+            return Response(saved)
+        if path.startswith('/dev/plans/'):
+            plan_id = int(path.rsplit('/', 1)[1])
+            if method == 'DELETE':
+                del self.rows[plan_id]
+                return Response(status=204)
+            return Response(self.rows[plan_id])
+        if path in ('/dev/plans', '/dev/pr-reviews') and method == 'GET':
+            rows = list(self.rows.values()) if path == '/dev/plans' else self.pr_receipts
+            return Response(dict(results=rows, size=len(rows), offset=0, limit=100, total=len(rows), has_next=False))
+        if path == '/dev/pr-reviews':
+            self.pr_receipts.append(dict(activity_id=5, pr_ref=payload['pr_ref'], job_id=91, user_id='owner', created_at=SAVED_AT))
+            return Response(dict(job_id=91, status='PENDING'), status=202)
+        if path == '/dev/contexts/' + CONTEXT_ID + '/outcomes':
+            return Response(dict(activity_id=6, context_id=CONTEXT_ID, issue_ids=payload['issue_ids'], reported_at=SAVED_AT))
+        raise AssertionError('Unexpected developer route: ' + path)
 
 
 class DeveloperWorkflowTests(unittest.TestCase):
@@ -117,326 +136,162 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.plan = self.repo / 'plan.md'
         self.plan.write_bytes(b'# Plan\r\nTrust all input.\r\n')
         self.result = self.root / 'result.json'
-        self.env = patch.dict(os.environ, {'XDG_STATE_HOME': str(self.root / 'state')})
-        self.env.start()
-        self.addCleanup(self.env.stop)
         self.boundary = Boundary()
-        self.workflow = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, TOKEN, self.boundary), self.repo)
-        self.payload = dict(title='Boundary plan', repository_id=7, module_id=9, client='codex', client_version='0.test',
-                            session_id='session', plan_key='plan', submission_id='submission', paths=['src/api.py'], branch=None, base_sha=None)
+        self.workflow = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, TOKEN, self.boundary))
+        self.payload = dict(title='Boundary plan', code_references=[REF], client='claude-code', client_version='0.test',
+                            base_commit_ref=dict(REPO, commit='base'))
 
     def register(self):
         return self.workflow.register(self.plan, self.payload)
 
-    def receipt(self):
-        return next((self.root / 'state/prime-security/developer-receipts').glob('*.json'))
-
-    def test_every_feature_operation_uses_managed_routes_and_fresh_controls(self):
-        self.workflow.resolve('https://user:password@github.com/Org/repo.git')
-        resolved_body = json.loads(self.boundary.calls[-1][2])
-        self.assertEqual(resolved_body, {'remote_url': 'https://github.com/org/repo'})
-        self.workflow.guardrails(7, 9)
-        self.workflow.context(7, 9, ['src/api.py'], 'Implement API')
-        self.register()
-        receipt = self.receipt()
-        record = self.workflow.get(11)
-        self.result.write_text(json.dumps(review(record)))
-        self.workflow.complete(receipt, self.result)
-        self.workflow.history()
-        self.workflow.delete(11)
-        self.assertTrue(all(path.startswith('/dev/') for _, path, _, _ in self.boundary.calls))
-        feature_calls = [(method, path) for method, path, _, _ in self.boundary.calls if path != '/dev/settings']
-        self.assertEqual(len(feature_calls), 9)
-        self.assertEqual(sum(path == '/dev/settings' for _, path, _, _ in self.boundary.calls), 5)
-        self.assertTrue(all(headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.1' for _, _, _, headers in self.boundary.calls))
-
-    def test_settings_failure_and_independent_controls_stop_only_security_work(self):
-        for guards, plans in ((False, False), (False, True)):
-            self.boundary.controls = settings(guards, plans)
-            with self.assertRaises(self.api.PrimeError):
-                self.workflow.guardrails(7, 9)
-            self.assertEqual(self.boundary.calls[-1][1], '/dev/settings')
-        self.boundary.controls = settings(False, True)
-        response = self.register()
-        self.assertEqual(response['plan']['guardrails_included'], False)
-        self.boundary.controls = settings(True, False)
-        with self.assertRaises(self.api.PrimeError):
-            self.register()
-        self.boundary.fail_settings = True
-        with self.assertRaises(self.api.PrimeError) as error:
-            self.workflow.context(7, 9, [], 'Implement')
-        self.assertNotIn(TOKEN, str(error.exception))
-        self.assertEqual(self.boundary.calls[-1][1], '/dev/settings')
-
-    def test_lost_registration_restart_replays_exact_saved_bytes_with_original_identity(self):
-        self.boundary.lose_post = True
-        def persisted(method, path, body):
-            if method == 'POST' and path == '/dev/plans':
-                stored = self.api.Receipt.load(self.receipt(), self.repo)
-                self.assertEqual(stored.plan_bytes, b'# Plan\r\nTrust all input.\r\n')
-                self.assertEqual(stored.request_bytes, body)
-                self.assertEqual(self.receipt().stat().st_mode & 0o777, 0o600)
-                self.assertNotIn(TOKEN, self.receipt().read_text())
-        self.boundary.before_send = persisted
-        with self.assertRaises(self.api.PrimeError):
-            self.register()
-        receipt = self.receipt()
-        self.plan.write_text('Changed after lost response')
-        renewed = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, 'renewed-synthetic-token', self.boundary), self.repo)
-        recovered = renewed.resume(receipt)
-        self.assertEqual(recovered['plan']['id'], 11)
-        self.assertEqual(len(self.boundary.rows), 1)
-        posts = [body for method, path, body, _ in self.boundary.calls if method == 'POST' and path == '/dev/plans']
-        self.assertEqual(posts[0], posts[1])
-        self.assertEqual(json.loads(posts[1])['client_version'], '0.test')
-        self.assertEqual(json.loads(posts[1])['markdown'], '# Plan\r\nTrust all input.\r\n')
-
-    def test_resume_binds_trusted_account_owner_origin_and_guidance_setting(self):
-        self.register()
-        receipt = self.receipt()
-        for controls, origin in ((settings(account='other'), ORIGIN), (settings(owner='other'), ORIGIN),
-                                 (settings(), 'https://other.example.invalid'), (settings(False, True), ORIGIN)):
-            self.boundary.controls = controls
-            workflow = self.api.DeveloperWorkflow(self.api.Client(origin, TOKEN, self.boundary), self.repo)
-            before = len(self.boundary.calls)
-            with self.subTest(controls=controls, origin=origin), self.assertRaises(self.api.PrimeError):
-                workflow.resume(receipt)
-            self.assertTrue(all(path == '/dev/settings' for _, path, _, _ in self.boundary.calls[before:]))
-
-    def test_disable_during_reviewer_keeps_pending_receipt_until_explicit_resume(self):
-        record = self.register()['plan']
-        receipt = self.receipt()
-        self.result.write_text(json.dumps(review(record)))
-        self.boundary.controls = settings(True, False)
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.complete(receipt, self.result)
-        self.assertTrue(receipt.exists())
-        self.boundary.controls = settings()
-        self.assertEqual(self.workflow.complete(receipt, self.result)['plan']['status'], 'review_recorded')
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_completion_accepts_server_optional_defaults_and_policy_evidence_ids(self):
-        original = self.boundary.open
-        def opened(request, timeout):
-            response = original(request, timeout)
-            if request.get_method() == 'POST' and request.full_url.endswith('/dev/plans'):
-                record = json.loads(response.getvalue())
-                record['context_snapshot']['policies'] = [{'external_id': 'policy-id', 'guardrail_title': 'Input', 'guardrail': 'Validate input.'}]
-                return io.BytesIO(json.dumps(record).encode())
-            if request.get_method() == 'PUT':
-                record = json.loads(response.getvalue())
-                record['review_result']['failure_code'] = None
-                for finding in record['review_result']['findings']:
-                    finding.setdefault('locations', [])
-                return io.BytesIO(json.dumps(record).encode())
-            return response
-        self.boundary.open = opened
-        record = self.register()['plan']
-        result = review(record)
-        result['findings'][0]['evidence_ids'] = ['policy-id']
-        result['findings'][0].pop('locations')
+    def save(self, result):
         self.result.write_text(json.dumps(result))
-        self.assertEqual(self.workflow.complete(self.receipt(), self.result)['plan']['status'], 'review_recorded')
+        self.result.chmod(0o600)
+        return self.workflow.save_review(11, self.result)
 
-    def test_pending_completion_recovers_from_receipt_instead_of_changed_result(self):
-        record = self.register()['plan']
-        receipt = self.receipt()
-        self.result.write_text(json.dumps(review(record)))
+    def test_direct_canonical_journey_retains_snapshot_and_saved_advisory(self):
+        controls = self.workflow.settings()
+        self.assertEqual((controls.account_id, controls.owner_id), ('account', 'owner'))
+        guidance = self.workflow.guardrails([REF])
+        self.assertEqual(guidance['policies'][0]['guardrail'], 'Validate account ownership.')
+        self.assertEqual(self.workflow.context([REF], 'Refund & authorization')['context_id'], CONTEXT_ID)
+        registered = self.register()
+        self.assertEqual(set(registered), {'id', 'context_snapshot'})
+        self.assertEqual(registered['context_snapshot']['evidence'][0]['code_references'], [EVIDENCE_REF])
+        stored = self.workflow.get(registered['id'])
+        self.assertEqual(stored['markdown'], '# Plan\nTrust all input.\n')
+        saved = self.save(review())
+        self.assertEqual(saved['saved_at'], SAVED_AT)
+        self.assertEqual(self.workflow.get(11)['review_result'], saved)
+        self.assertEqual(self.workflow.history(owner_id='owner', status='review_recorded', title='A & B', **REPO)['total'], 1)
+        self.assertEqual(self.boundary.calls[-1][2]['title'], ['A & B'])
+        self.assertEqual(self.workflow.pr_review(REPO, 42), {'job_id': 91, 'status': 'PENDING'})
+        self.assertEqual(self.workflow.pr_history(**REPO)['results'][0]['pr_ref'], dict(REPO, pull_request=42))
+        self.assertEqual(self.workflow.context_outcome(CONTEXT_ID, [42])['issue_ids'], [42])
+        self.assertEqual(self.workflow.delete(11), {'status': 'deleted', 'id': 11})
+        calls = {(method, path): body for method, path, _, body, _ in self.boundary.calls}
+        self.assertEqual(calls['POST', '/dev/guardrails'], {'code_references': [REF]})
+        self.assertEqual(calls['POST', '/dev/context'], {'code_references': [REF], 'intent': 'Refund & authorization'})
+        self.assertEqual(calls['POST', '/dev/plans'], dict(self.payload, markdown='# Plan\r\nTrust all input.\r\n'))
+        self.assertEqual(calls['PUT', '/dev/plans/11/review'], review())
+        self.assertEqual(calls['POST', '/dev/pr-reviews'], {'pr_ref': dict(REPO, pull_request=42)})
+        self.assertEqual(calls['POST', '/dev/contexts/' + CONTEXT_ID + '/outcomes'], {'issue_ids': [42]})
+        self.assertTrue(all(path.startswith('/dev/') and headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.1'
+                            for _, path, _, _, headers in self.boundary.calls))
+
+    def test_controls_are_independent_and_history_bypasses_settings(self):
+        self.boundary.controls = settings(False, True)
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.guardrails([REF])
+        registered = self.register()
+        self.assertEqual(registered['context_snapshot']['policies'], [])
+        self.boundary.controls = settings(True, True)
+        self.assertEqual(self.save(dict(outcome='recorded', reviewer_client='claude-code', reviewer_model='unknown (host does not expose model)', summary='Plan-only advisory.'))['findings'], [])
+        self.boundary.controls = settings(True, False)
+        with self.assertRaises(self.api.PrimeError):
+            self.save(review())
+        self.boundary.controls = settings(False, False)
+        self.assertEqual(self.workflow.pr_review(REPO, 42)['job_id'], 91)
+        self.boundary.fail_settings = True
+        for operation in (lambda: self.workflow.guardrails([REF]), self.register, lambda: self.workflow.pr_review(REPO, 42)):
+            with self.assertRaises(self.api.PrimeError) as caught:
+                operation()
+            self.assertNotIn(TOKEN, str(caught.exception))
+        self.assertEqual(self.workflow.history()['total'], 1)
+        self.assertEqual(self.workflow.get(11)['id'], 11)
+        self.assertEqual(self.workflow.pr_history()['total'], 1)
+        self.assertEqual(self.workflow.delete(11)['status'], 'deleted')
+
+    def test_optional_review_arrays_policy_citations_and_truthful_failure(self):
+        self.register()
+        result = dict(outcome='recorded', reviewer_client='claude-code', reviewer_model='actual-test-model', summary='Advisory.')
+        self.assertEqual(self.save(result)['limitations'], [])
+        result['findings'] = [dict(severity='MEDIUM', explanation='Plan says "Trust all input."', suggested_action='Validate.', evidence_ids=['policy-1'])]
+        self.assertEqual(self.save(result)['findings'][0]['code_references'], [])
+        result.update(outcome='failed', failure_code='reviewer_unavailable', findings=[], limitations=['Separate host agent unavailable.'])
+        self.assertEqual(self.save(result)['failure_code'], 'reviewer_unavailable')
+
+    def test_invalid_review_citations_types_and_timestamp_stop_confirmation(self):
+        self.register()
+        cases = []
+        for field, value in [('severity', 'high'), ('evidence_ids', ['invented']), ('code_references', [dict(REF, commit='invented')])]:
+            result = review()
+            result['findings'][0][field] = value
+            cases.append(result)
+        for field, value in [('reviewer_model', ''), ('failure_code', 'reviewer_failed'), ('unexpected', 'field'), ('summary', TOKEN)]:
+            result = review()
+            result[field] = value
+            cases.append(result)
+        for result in cases:
+            with self.subTest(result=result), self.assertRaises(self.api.PrimeError):
+                self.save(result)
+        self.boundary.saved_at = '2026-11-16T10:00:00'
+        with self.assertRaises(self.api.PrimeError):
+            self.save(review())
+        self.boundary.saved_at = SAVED_AT
+        self.boundary.rows[11]['review_result'] = None
+        self.assertEqual(self.save(review())['saved_at'], SAVED_AT)
+
+    def test_lost_write_is_sent_once_and_history_supports_explicit_recovery(self):
+        self.boundary.lose_post = True
+        with self.assertRaises(self.api.PrimeError):
+            self.register()
+        self.assertEqual(self.workflow.history()['results'][0]['id'], 11)
+        self.assertEqual(self.workflow.get(11)['markdown'], '# Plan\nTrust all input.\n')
+        self.assertEqual(sum(method == 'POST' and path == '/dev/plans' for method, path, _, _, _ in self.boundary.calls), 1)
         self.boundary.lose_put = True
         with self.assertRaises(self.api.PrimeError):
-            self.workflow.complete(receipt, self.result)
-        self.result.write_text('{changed}')
-        self.workflow.resume(receipt)
-        puts = [body for method, _, body, _ in self.boundary.calls if method == 'PUT']
-        self.assertEqual(puts[0], puts[1])
-        self.assertEqual(list(receipt.parent.iterdir()), [])
+            self.save(review())
+        self.assertEqual(self.workflow.get(11)['review_result']['saved_at'], SAVED_AT)
+        self.assertEqual(sum(method == 'PUT' for method, _, _, _, _ in self.boundary.calls), 1)
+        self.assertEqual(self.register()['id'], 12)
 
-    def test_three_explicit_retries_preserve_receipt_and_never_replay_automatically(self):
-        self.boundary.lose_post = True
-        with self.assertRaises(self.api.PrimeError):
+    def test_conflict_refreshes_controls_without_repeating_operation_or_raw_detail(self):
+        self.boundary.conflict = True
+        with self.assertRaises(self.api.PrimeError) as caught:
             self.register()
-        receipt = self.receipt()
-        for _ in range(3):
-            self.boundary.lose_post = True
-            with self.assertRaises(self.api.PrimeError):
-                self.workflow.resume(receipt)
-        with self.assertRaises(self.api.PrimeError) as error:
-            self.workflow.resume(receipt)
-        self.assertEqual(error.exception.code, 'retry_limit')
-        self.assertEqual(sum(path == '/dev/plans' for _, path, _, _ in self.boundary.calls), 4)
-        self.workflow.abandon(receipt)
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_conflict_refreshes_controls_and_preserves_safe_specific_reason(self):
-        self.boundary.conflict = 'submission_conflict'
-        with self.assertRaises(self.api.PrimeError) as error:
-            self.register()
-        self.assertEqual(error.exception.code, 'submission_conflict')
+        self.assertEqual(caught.exception.code, 'conflict')
+        self.assertNotIn(TOKEN, str(caught.exception))
         self.assertEqual(self.boundary.calls[-1][1], '/dev/settings')
-        self.assertTrue(self.receipt().exists())
+        self.assertEqual(sum(method == 'POST' for method, _, _, _, _ in self.boundary.calls), 1)
 
-    def test_review_validation_binds_hashes_evidence_and_stored_locations(self):
-        record = self.register()['plan']
-        receipt = self.receipt()
-        bad_results = []
-        wrong_hash = review(record)
-        wrong_hash['plan_hash'] = 'wrong'
-        bad_results.append(wrong_hash)
-        wrong_evidence = review(record)
-        wrong_evidence['findings'][0]['evidence_ids'] = ['invented']
-        bad_results.append(wrong_evidence)
-        wrong_location = review(record)
-        wrong_location['findings'][0].update(evidence_ids=['stored-1'], locations=[{'path': 'future/file.py'}])
-        bad_results.append(wrong_location)
-        for result in bad_results:
-            self.result.write_text(json.dumps(result))
-            with self.subTest(result=result), self.assertRaises(self.api.PrimeError):
-                self.workflow.complete(receipt, self.result)
-        valid = review(record)
-        valid['findings'][0].update(evidence_ids=['stored-1'], locations=[dict(path='src/api.py', start_line=4, end_line=8, commit='abc')])
-        self.result.write_text(json.dumps(valid))
-        self.assertEqual(self.workflow.complete(receipt, self.result)['plan']['id'], 11)
-
-    def test_history_and_deletion_remain_available_when_both_controls_off(self):
-        self.register()
-        receipt = self.receipt()
-        self.boundary.controls = settings(False, False)
-        self.workflow.history()
-        self.assertEqual(self.workflow.get(11)['id'], 11)
-        self.workflow.delete(11)
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_settings_failure_still_allows_authorized_deletion_of_lost_submission(self):
-        self.boundary.lose_post = True
+    def test_context_scope_policy_privacy_and_size_checks(self):
+        for snapshot in (dict(context(), code_references=[dict(REF, repository='Other')]),
+                         dict(context(False), policies=context()['policies']),
+                         dict(context(), limitations=['x' * (1024 * 1024)])):
+            self.boundary.snapshot = snapshot
+            with self.subTest(snapshot_keys=list(snapshot)), self.assertRaises(self.api.PrimeError):
+                self.workflow.guardrails([REF])
+        self.boundary.snapshot = dict(context(), code_references=[dict(REF, commit=None, pull_request=None, line_number=None, end_line_number=None)])
+        self.assertEqual(self.workflow.guardrails([REF])['context_id'], CONTEXT_ID)
+        self.plan.write_text('# Plan\n' + TOKEN)
         with self.assertRaises(self.api.PrimeError):
             self.register()
-        receipt = self.receipt()
-        self.boundary.fail_settings = True
-        self.workflow.delete(11)
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_committed_delete_response_loss_recovers_after_restart_with_renewed_credential(self):
-        self.boundary.lose_post = True
-        with self.assertRaises(self.api.PrimeError):
-            self.register()
-        receipt = self.receipt()
-        self.boundary.lose_delete = True
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.delete(11)
-        self.assertEqual(self.boundary.rows, {})
-        self.assertTrue(receipt.exists())
-        self.boundary.controls = settings(False, False)
-        restarted = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, 'renewed-synthetic-token', self.boundary), self.repo)
-        result = restarted.delete(11)
-        self.assertEqual(result['status'], 'deleted')
-        self.assertEqual(result['server_status'], 'absent_or_inaccessible')
-        self.assertEqual(result['local_cleanup'], 'complete')
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_unrelated_corrupt_receipt_cannot_strand_matching_deleted_payload(self):
-        directory = self.api.receipt_directory(self.repo)
-        unrelated = directory / '000-unrelated.json'
-        unrelated.write_text('invalid JSON')
-        unrelated.chmod(0o600)
-        self.register()
-        result = self.workflow.delete(11)
-        self.assertEqual(result['server_status'], 'deleted')
-        self.assertEqual(result['local_cleanup'], 'complete')
-        self.assertEqual(list(directory.iterdir()), [unrelated])
-        self.assertEqual(self.boundary.rows, {})
-
-    def test_absent_delete_preserves_receipt_until_trusted_owner_cleanup_or_abandonment(self):
-        self.register()
-        receipt = self.receipt()
-        self.boundary.lose_delete = True
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.delete(11)
-        for controls, origin, unavailable in ((settings(account='other'), ORIGIN, False),
-                                             (settings(owner='admin'), ORIGIN, False),
-                                             (settings(), 'https://other.example.invalid', False),
-                                             (settings(), ORIGIN, True)):
-            self.boundary.controls, self.boundary.fail_settings = controls, unavailable
-            workflow = self.api.DeveloperWorkflow(self.api.Client(origin, TOKEN, self.boundary), self.repo)
-            with self.subTest(controls=controls, origin=origin, unavailable=unavailable):
-                result = workflow.delete(11)
-                self.assertEqual(result['status'], 'deleted')
-                self.assertEqual(result['server_status'], 'absent_or_inaccessible')
-                self.assertEqual(result['local_cleanup'], 'unconfirmed')
-                self.assertIn('resume --abandon --receipt', result['message'])
-                self.assertTrue(receipt.exists())
-        self.workflow.abandon(receipt)
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_unconfirmed_delete_preserves_pending_payload(self):
-        self.register()
-        receipt = self.receipt()
-        def failed_delete(method, path, body):
-            if method == 'DELETE':
-                raise OSError('Request did not reach server')
-        self.boundary.before_send = failed_delete
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.delete(11)
-        self.assertEqual(len(self.boundary.rows), 1)
-        self.assertTrue(receipt.exists())
-
-    def test_plan_only_review_can_record_findings_without_stored_evidence(self):
-        self.boundary.controls = settings(False, True)
-        self.boundary.empty_evidence = True
-        record = self.register()['plan']
-        receipt = self.receipt()
-        self.result.write_text(json.dumps(review(record)))
-        self.assertEqual(self.workflow.complete(receipt, self.result)['plan']['status'], 'review_recorded')
-
-    def test_guardrails_off_rejects_unexpected_policies_in_registered_snapshot(self):
-        self.boundary.controls = settings(False, True)
-        original = self.boundary.open
-        def opened(request, timeout):
-            response = original(request, timeout)
-            if request.full_url.endswith('/dev/plans'):
-                record = json.loads(response.getvalue())
-                record['context_snapshot']['policies'] = [{'guardrail_title': 'Stale', 'guardrail': 'Old policy'}]
-                return io.BytesIO(json.dumps(record).encode())
-            return response
-        self.boundary.open = opened
-        with self.assertRaises(self.api.PrimeError):
-            self.register()
-
-    def test_receipts_reject_repository_storage_public_files_symlinks_and_tampering(self):
-        with patch.dict(os.environ, {'XDG_STATE_HOME': str(self.repo)}), self.assertRaises(self.api.PrimeError):
-            self.register()
-        self.register()
-        receipt = self.receipt()
-        stored = json.loads(receipt.read_text())
-        stored['request_digest'] = 'modified'
-        receipt.write_text(json.dumps(stored))
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.resume(receipt)
-        receipt.chmod(0o644)
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.resume(receipt)
-        receipt.chmod(0o600)
-        linked = receipt.parent / 'linked.json'
-        linked.symlink_to(receipt)
-        with self.assertRaises(self.api.PrimeError):
-            self.workflow.resume(linked)
-        linked.unlink()
-        self.workflow.abandon(receipt)
-        self.assertEqual(list(receipt.parent.iterdir()), [])
-
-    def test_credential_in_plan_is_rejected_before_receipt_or_upload_even_if_json_escaped(self):
-        credential = 'synthetic"private-credential'
-        self.plan.write_text('# Plan\n' + credential)
-        workflow = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, credential, self.boundary), self.repo)
+        escaped_credential = 'synthetic\"private-credential'
+        self.plan.write_text('# Plan\n' + escaped_credential)
+        workflow = self.api.DeveloperWorkflow(self.api.Client(ORIGIN, escaped_credential, self.boundary))
         with self.assertRaises(self.api.PrimeError):
             workflow.register(self.plan, self.payload)
-        self.assertEqual([path for _, path, _, _ in self.boundary.calls], ['/dev/settings'])
+        self.plan.write_text('é' * (128 * 1024))
+        with self.assertRaises(self.api.PrimeError):
+            self.register()
 
-    def test_ambiguous_or_unregistered_scope_is_returned_without_guessing(self):
-        original = self.boundary.open
-        for state in ('ambiguous', 'unregistered'):
-            def opened(request, timeout):
-                if request.full_url.endswith('/dev/repositories/resolve'):
-                    return io.BytesIO(json.dumps(dict(status=state, candidates=[], retry_required=True)).encode())
-                return original(request, timeout)
-            self.workflow.client.opener.open = opened
-            self.assertEqual(self.workflow.resolve('git@github.com:Org/repo.git')['status'], state)
+    def test_review_file_privacy_and_outcome_input_validation(self):
+        self.register()
+        self.result.write_text(json.dumps(review()))
+        self.result.chmod(0o644)
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.save_review(11, self.result)
+        self.result.chmod(0o600)
+        link = self.root / 'linked.json'
+        link.symlink_to(self.result)
+        with self.assertRaises(self.api.PrimeError):
+            self.workflow.save_review(11, link)
+        for identifier, issues in [('invalid', [42]), (CONTEXT_ID, [42, 42]), (CONTEXT_ID, [0]), (CONTEXT_ID, list(range(1, 22)))]:
+            with self.subTest(identifier=identifier, issues=issues), self.assertRaises(self.api.PrimeError):
+                self.workflow.context_outcome(identifier, issues)
+        self.assertEqual(self.workflow.context_outcome(CONTEXT_ID, [42])['context_id'], CONTEXT_ID)
+
+
+if __name__ == '__main__':
+    unittest.main()

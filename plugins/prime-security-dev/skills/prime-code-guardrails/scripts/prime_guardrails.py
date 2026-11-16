@@ -2,20 +2,19 @@
 """Managed Prime developer workflows. Python 3.9+, standard library only."""
 
 import argparse
-from dataclasses import asdict, dataclass
-import base64
-import hashlib
+from dataclasses import dataclass
+from datetime import datetime
 from http.client import HTTPException
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
 import sys
 import tempfile
 import time
-from typing import Optional
+from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -25,8 +24,8 @@ DEFAULT_ORIGIN = 'https://api.primesec.ai'
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 RELEASE_VERSION = '1.5.0-alpha.1'
 MAX_PLAN_BYTES = 256 * 1024
-MAX_RECEIPT_BYTES = 3 * 1024 * 1024
-CONFLICT_CODES = {'submission_conflict', 'context_settings_changed', 'review_hash_mismatch', 'review_conflict'}
+PLATFORMS = ('github', 'gitlab', 'bitbucket', 'upload')
+REFERENCE_FIELDS = ('organization', 'repository', 'platform', 'branch', 'commit', 'pull_request', 'filename', 'line_number', 'end_line_number')
 
 
 class PrimeError(Exception):
@@ -35,7 +34,6 @@ class PrimeError(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
-        self.receipt = None
         self.conflict = False
 
 
@@ -136,7 +134,7 @@ class Client:
             raise PrimeError('invalid_path', 'Developer feature requests require a reviewed /dev route.')
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise PrimeError('timeout', 'Prime request budget exceeded; resume explicitly if a receipt exists.')
+            raise PrimeError('timeout', 'Prime request budget exceeded; inspect history before repeating a write.')
         body = payload if isinstance(payload, bytes) else (json_bytes(payload) if payload is not None else None)
         request = Request(self.origin + path, data=body, method=method, headers={
             'Authorization': 'Bearer ' + self.token, 'Accept': 'application/json',
@@ -145,23 +143,16 @@ class Client:
         try:
             with self.opener.open(request, timeout=min(30, remaining)) as response:
                 data = response.read(MAX_RESPONSE_BYTES + 1)
+                if method == 'DELETE' and response.getcode() != 204:
+                    raise PrimeError('invalid_response', 'Deletion was not confirmed with HTTP 204; inspect history before repeating it.')
         except HTTPError as error:
-            status, code = error.code, 'http_error'
-            try:
-                if status == 409:
-                    try:
-                        detail = json.loads(error.read(4097)).get('detail')
-                        if isinstance(detail, str) and detail in CONFLICT_CODES:
-                            code = detail
-                    except (ValueError, OSError, HTTPException, AttributeError):
-                        pass
-            finally:
-                error.close()
+            status = error.code
+            error.close()
             messages = {
-                401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file. Then resume explicitly.'),
+                401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file. Then inspect history before explicitly repeating a write.'),
                 403: ('permission_denied', 'The credential lacks permission; request the required access before explicit recovery.'),
                 404: ('not_found', 'The requested developer record is absent or inaccessible to this caller.'),
-                409: (code if code != 'http_error' else 'conflict', 'Developer request conflict; check fresh settings and use an explicit new revision for changed content or context.'),
+                409: ('conflict', 'Developer request paused; check fresh settings before explicitly attempting new security work.'),
                 422: ('invalid_input', 'Prime rejected the input; check the reviewed developer contract.'),
                 429: ('rate_limited', 'Prime rate limit reached; retry explicitly later.'),
                 503: ('unavailable', 'Developer settings or context unavailable; ordinary coding can continue. Retry security work explicitly later.'),
@@ -173,7 +164,7 @@ class Client:
             failure.conflict = status == 409
             raise failure from None
         except (OSError, URLError, HTTPException, ValueError):
-            raise PrimeError('network_error', 'Prime request failed; check connectivity, TLS, and the configured API origin. Resume explicitly if a receipt exists.') from None
+            raise PrimeError('network_error', 'Prime request failed; check connectivity, TLS, and the configured API origin. Inspect history before explicitly repeating a write.') from None
         if len(data) > MAX_RESPONSE_BYTES:
             raise PrimeError('response_too_large', 'Prime response exceeded the supported size; no partial context was accepted.')
         if method == 'DELETE' and not data:
@@ -207,9 +198,9 @@ class Settings:
         data = client.request('GET', '/dev/settings')
         caller = data.get('caller')
         if (not isinstance(caller, dict) or any(not isinstance(caller.get(key), str) or not caller[key] for key in ('account_id', 'user_id'))
-                or any(type(data.get(key)) is not bool for key in ('effective_dev_guardrails_enabled', 'effective_security_plan_enabled'))):
+                or any(type(data.get(key)) is not bool for key in ('dev_guardrails_enabled', 'security_plan_enabled'))):
             raise PrimeError('invalid_settings', 'Current controls and trusted caller could not be read; continue ordinary coding and retry security work explicitly.')
-        return cls(caller['account_id'], caller['user_id'], data['effective_dev_guardrails_enabled'], data['effective_security_plan_enabled'], data)
+        return cls(caller['account_id'], caller['user_id'], data['dev_guardrails_enabled'], data['security_plan_enabled'], data)
 
     def require(self, operation):
         enabled = self.plans if operation == 'plan' else self.guardrails if operation == 'guidance' else self.guardrails or self.plans
@@ -230,11 +221,6 @@ def private_directory(path, repo):
     return path
 
 
-def receipt_directory(repo):
-    root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
-    return private_directory(root / 'prime-security/developer-receipts', repo)
-
-
 def read_bytes(path, limit, private=False):
     if os.name != 'posix':
         raise PrimeError('unsupported_platform', 'Private developer artifacts currently require macOS or Linux.')
@@ -249,7 +235,7 @@ def read_bytes(path, limit, private=False):
             raise OSError('Oversize file')
         return value
     except OSError:
-        raise PrimeError('invalid_artifact', 'Cannot securely read the complete regular artifact; check size, ownership and private receipt permissions.') from None
+        raise PrimeError('invalid_artifact', 'Cannot securely read the complete regular artifact; check size, ownership and private artifact permissions.') from None
 
 
 def durable_write(path, value, replace=False):
@@ -277,63 +263,21 @@ def durable_write(path, value, replace=False):
             temporary.unlink(missing_ok=True)
 
 
-@dataclass
-class Receipt:
-    origin: str
-    account_id: str
-    owner_id: str
-    guardrails_included: bool
-    plan_b64: str
-    request_b64: str
-    plan_digest: str
-    request_digest: str
-    registered: Optional[dict] = None
-    completion_b64: str = ''
-    completion_digest: str = ''
-    retries: int = 0
+def reference_key(reference):
+    return tuple(reference.get(key) for key in REFERENCE_FIELDS)
 
-    @property
-    def plan_bytes(self):
-        return base64.b64decode(self.plan_b64, validate=True)
 
-    @property
-    def request_bytes(self):
-        return base64.b64decode(self.request_b64, validate=True)
-
-    @property
-    def completion_bytes(self):
-        return base64.b64decode(self.completion_b64, validate=True)
-
-    def save(self, path, replace=True):
-        durable_write(path, json_bytes(asdict(self)), replace)
-
-    @classmethod
-    def load(cls, path, repo):
-        path = Path(path).absolute()
-        if path.parent != receipt_directory(repo):
-            raise PrimeError('invalid_receipt', 'Use a receipt in the private developer receipt directory.')
-        try:
-            receipt = cls(**json.loads(read_bytes(path, MAX_RECEIPT_BYTES, private=True)))
-            if (hashlib.sha256(receipt.plan_bytes).hexdigest() != receipt.plan_digest
-                    or hashlib.sha256(receipt.request_bytes).hexdigest() != receipt.request_digest
-                    or receipt.completion_b64 and hashlib.sha256(receipt.completion_bytes).hexdigest() != receipt.completion_digest
-                    or type(receipt.retries) is not int or receipt.retries < 0):
-                raise ValueError('Invalid integrity')
-            return receipt
-        except (TypeError, ValueError, UnicodeError):
-            raise PrimeError('invalid_receipt', 'Receipt integrity validation failed; preserve it for investigation or explicitly abandon it.') from None
-
-    def bind(self, client, controls):
-        if (self.origin, self.account_id, self.owner_id) != (client.origin, controls.account_id, controls.owner_id):
-            raise PrimeError('receipt_identity_mismatch', 'Receipt origin or trusted caller changed; restore the original origin/account/owner before recovery.')
-        controls.require('plan')
-        if self.guardrails_included != controls.guardrails:
-            raise PrimeError('context_settings_changed', 'Guidance settings changed; explicitly create a new submission with current context instead of reusing this snapshot.')
+def aware_timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        return parsed.tzinfo is not None and parsed.utcoffset() is not None
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 class DeveloperWorkflow:
-    def __init__(self, client, repo):
-        self.client, self.repo = client, Path(repo)
+    def __init__(self, client):
+        self.client = client
 
     def settings(self):
         return Settings.read(self.client)
@@ -343,229 +287,171 @@ class DeveloperWorkflow:
             return self.client.request(method, path, payload)
         except PrimeError as error:
             if error.conflict:
-                self.settings()
+                try:
+                    controls = self.settings()
+                    error.args = (str(error) + ' Current guidance: ' + str(controls.guardrails).lower()
+                                  + '; plans: ' + str(controls.plans).lower() + '.',)
+                except PrimeError:
+                    pass
             raise
 
-    def resolve(self, remote):
-        self.settings().require('resolve')
-        identity = repo_identity(remote)
-        if identity is None:
-            raise PrimeError('unsupported_remote', 'Select a registered repository/module explicitly; a supported remote is required for resolution.')
-        host, port, path = identity
-        remote = 'https://' + host + (':' + str(port) if port else '') + '/' + path
-        return self.request('POST', '/dev/repositories/resolve', {'remote_url': remote})
-
-    def guardrails(self, repository_id, module_id):
+    def guardrails(self, code_references):
         self.settings().require('guidance')
-        return self.validate_context(self.request('GET', '/dev/guardrails?' + urlencode({'repository_id': repository_id, 'module_id': module_id})), repository_id, module_id, True)
+        return self.validate_context(self.request('POST', '/dev/guardrails', {'code_references': code_references}), code_references, True)
 
-    def context(self, repository_id, module_id, paths, intent):
+    def context(self, code_references, intent=''):
+        if not isinstance(intent, str) or len(intent) > 500:
+            raise PrimeError('invalid_input', 'Context intent is limited to 500 characters.')
         self.settings().require('guidance')
-        return self.validate_context(self.request('POST', '/dev/context', {'repository_id': repository_id, 'module_id': module_id, 'paths': paths, 'intent': intent}), repository_id, module_id, True)
+        return self.validate_context(self.request('POST', '/dev/context', {'code_references': code_references, 'intent': intent}), code_references, True)
 
-    def validate_context(self, context, repository_id, module_id, guards):
-        if (context.get('repository_id') != repository_id or context.get('module_id') != module_id
-                or context.get('guardrails_included') is not guards or len(json_bytes(context)) > 1024 * 1024
-                or not isinstance(context.get('policies') or [], list)
-                or not guards and context.get('policies')
-                or any(not isinstance(policy, dict) or any(not isinstance(policy.get(key), str) or not policy[key].strip()
-                       for key in ('guardrail_title', 'guardrail')) for policy in context.get('policies') or [])):
-            raise PrimeError('invalid_context', 'Context scope, coverage or complete policy text is invalid; no partial context was accepted.')
+    def validate_context(self, context, code_references, guards=None):
+        try:
+            UUID(context['context_id'])
+            references = context['code_references']
+            included = context['guardrails_included']
+            policies, evidence = context['policies'], context['evidence']
+            valid = (type(included) is bool and (guards is None or included is guards)
+                     and len(json_bytes(context)) <= 1024 * 1024
+                     and isinstance(references, list) and all(isinstance(ref, dict) for ref in references)
+                     and [reference_key(ref) for ref in references] == [reference_key(ref) for ref in code_references]
+                     and isinstance(policies, list) and isinstance(evidence, list)
+                     and (included or not policies) and aware_timestamp(context['fetched_at'])
+                     and all(isinstance(context.get(key, []), list) for key in
+                             ('packages', 'references', 'unavailable_sources', 'truncated_sources', 'limitations'))
+                     and all(isinstance(policy, dict) and all(isinstance(policy.get(key), str) and policy[key].strip()
+                             for key in ('guardrail_title', 'guardrail')) for policy in policies)
+                     and all(isinstance(item, dict) and isinstance(item.get('id'), str) and item['id']
+                             and isinstance(item.get('code_references', []), list)
+                             and all(isinstance(ref, dict) for ref in item.get('code_references', [])) for item in evidence))
+            if not valid:
+                raise ValueError('Invalid context')
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise PrimeError('invalid_context', 'Context scope, coverage or complete policy text is invalid; no partial context was accepted.') from None
         return context
 
+    def bounded_payload(self, payload):
+        body = json_bytes(payload)
+        if len(body) > MAX_PLAN_BYTES or json.dumps(self.client.token, ensure_ascii=False)[1:-1].encode() in body:
+            raise PrimeError('invalid_payload', 'Plan/review requests must fit 256 KiB and contain no configured credential.')
+        return body
+
     def register(self, plan_file, payload):
-        controls = self.settings()
-        controls.require('plan')
-        plan = read_bytes(plan_file, MAX_PLAN_BYTES)
+        self.settings().require('plan')
         try:
-            request = json_bytes(dict(payload, markdown=plan.decode('utf-8')))
+            markdown = read_bytes(plan_file, MAX_PLAN_BYTES).decode('utf-8')
         except UnicodeError:
             raise PrimeError('invalid_plan', 'The plan must be complete UTF-8 Markdown.') from None
-        if not plan.strip() or json.dumps(self.client.token, ensure_ascii=False)[1:-1].encode() in request:
-            raise PrimeError('invalid_plan', 'The plan must be nonempty and contain no configured credential.')
-        receipt = Receipt(self.client.origin, controls.account_id, controls.owner_id, controls.guardrails,
-                          base64.b64encode(plan).decode(), base64.b64encode(request).decode(),
-                          hashlib.sha256(plan).hexdigest(), hashlib.sha256(request).hexdigest())
-        key = [receipt.origin, receipt.account_id, receipt.owner_id] + [payload[key] for key in ('client', 'session_id', 'plan_key', 'submission_id')]
-        path = receipt_directory(self.repo) / (hashlib.sha256(json_bytes(key)).hexdigest() + '.json')
-        if path.exists():
-            raise PrimeError('pending_submission', 'This submission already has a receipt; explicitly resume or abandon it before a new intent.')
-        receipt.save(path, replace=False)
-        return self.send_registration(receipt, path)
-
-    def send_registration(self, receipt, path):
-        try:
-            record = self.request('POST', '/dev/plans', receipt.request_bytes)
-            self.validate_record(receipt, record)
-            receipt.registered = record
-            receipt.save(path)
-            return self.result(receipt, path)
-        except PrimeError as error:
-            error.receipt = str(path)
-            raise
-
-    def validate_record(self, receipt, record):
-        request = json.loads(receipt.request_bytes)
-        if (type(record.get('id')) is not int or record['id'] <= 0
-                or record.get('account_id') != receipt.account_id or record.get('owner_id') != receipt.owner_id
-                or any(record.get(key) != request[key] for key in ('client', 'client_version', 'session_id', 'plan_key', 'submission_id', 'repository_id', 'module_id'))
-                or record.get('guardrails_included') != receipt.guardrails_included
-                or any(not isinstance(record.get(key), str) or not record[key] for key in ('plan_hash', 'context_hash', 'request_hash'))
-                or not isinstance(record.get('context_snapshot'), dict)):
-            raise PrimeError('invalid_plan_response', 'Registered plan identity or immutable snapshot is invalid; retain the receipt and recover explicitly.')
-        if receipt.registered is not None and any(record[key] != receipt.registered[key] for key in ('request_hash', 'plan_hash', 'context_hash')):
-            raise PrimeError('invalid_plan_response', 'Immutable server hashes changed; retain the receipt for explicit recovery.')
-        self.validate_context(record['context_snapshot'], request['repository_id'], request['module_id'], receipt.guardrails_included)
-        if json.dumps(self.client.token, ensure_ascii=False)[1:-1].encode() in json_bytes(record):
-            raise PrimeError('invalid_plan_response', 'Registered response contains a configured credential; it was not saved.')
-
-    def result(self, receipt, path):
-        return {'status': 'registered', 'receipt': str(path), 'plan': receipt.registered,
-                'label': 'Developer-agent review · Client-reported advisory'}
-
-    def complete(self, path, result_file):
-        receipt = Receipt.load(path, self.repo)
-        receipt.bind(self.client, self.settings())
-        if receipt.registered is None or receipt.completion_b64:
-            raise PrimeError('pending_operation', 'Explicitly resume the existing pending operation before supplying a result.')
-        body = read_bytes(result_file, MAX_PLAN_BYTES)
-        self.validate_review(receipt, body)
-        receipt.completion_b64, receipt.completion_digest = base64.b64encode(body).decode(), hashlib.sha256(body).hexdigest()
-        receipt.save(Path(path))
-        return self.send_completion(receipt, Path(path))
-
-    def validate_review(self, receipt, body):
-        try:
-            result = json.loads(body)
-            record = receipt.registered
-            required_strings = ('reviewer_client', 'reviewer_model', 'summary')
-            valid = (isinstance(result, dict) and result.get('plan_hash') == record['plan_hash']
-                     and result.get('context_hash') == record['context_hash'] and result.get('outcome') in ('recorded', 'failed')
-                     and all(isinstance(result.get(key), str) and result[key].strip() for key in required_strings)
-                     and isinstance(result.get('findings'), list) and isinstance(result.get('limitations'), list)
-                     and all(isinstance(item, str) for item in result['limitations']) and json.dumps(self.client.token, ensure_ascii=False)[1:-1].encode() not in json_bytes(result))
-            if not valid:
-                raise ValueError('Invalid review')
-            if result['outcome'] == 'failed' and (result.get('failure_code') not in ('reviewer_unavailable', 'reviewer_failed', 'review_cancelled') or result['findings']):
-                raise ValueError('Invalid failure')
-            if result['outcome'] == 'recorded' and result.get('failure_code') is not None:
-                raise ValueError('Invalid outcome')
-            evidence = {item['id']: item for item in record['context_snapshot'].get('evidence') or []}
-            policy_ids = {str(item['external_id']) for item in record['context_snapshot'].get('policies') or [] if item.get('external_id') is not None}
-            for finding in result['findings']:
-                if (not isinstance(finding, dict) or any(not isinstance(finding.get(key), str) or not finding[key].strip() for key in ('severity', 'explanation', 'suggested_action'))
-                        or not isinstance(finding.get('evidence_ids'), list) or any(not isinstance(key, str) or key not in evidence and key not in policy_ids for key in finding['evidence_ids'])):
-                    raise ValueError('Invalid finding')
-                locations = finding.get('locations', [])
-                allowed = [location for key in finding['evidence_ids'] if key in evidence for location in evidence[key].get('locations') or []]
-                if not isinstance(locations, list) or any(location not in allowed for location in locations):
-                    raise ValueError('Invalid location')
-        except (ValueError, TypeError, KeyError, UnicodeError):
-            raise PrimeError('invalid_review', 'Review must match registered hashes, typed findings and stored evidence IDs/locations; plan-only findings cite exact plan text with empty evidence IDs.') from None
-
-    def send_completion(self, receipt, path):
-        try:
-            record = self.request('PUT', '/dev/plans/' + str(receipt.registered['id']) + '/review', receipt.completion_bytes)
-            self.validate_record(receipt, record)
-            expected_status = 'review_recorded' if json.loads(receipt.completion_bytes)['outcome'] == 'recorded' else 'review_failed'
-            if record.get('status') != expected_status or not isinstance(record.get('review_result'), dict):
-                raise PrimeError('invalid_completion', 'Completion was not confirmed; retain the receipt and resume explicitly.')
-            self.validate_review(receipt, json_bytes(record['review_result']))
-            path.unlink()
-            return {'status': 'completed', 'plan': record, 'label': 'Developer-agent review · Client-reported advisory'}
-        except PrimeError as error:
-            error.receipt = str(path)
-            raise
-
-    def resume(self, path):
-        receipt = Receipt.load(path, self.repo)
-        receipt.bind(self.client, self.settings())
-        if receipt.retries >= 3:
-            raise PrimeError('retry_limit', 'Three explicit retries exhausted; preserve for investigation or explicitly abandon the receipt.')
-        receipt.retries += 1
-        receipt.save(Path(path))
-        if receipt.completion_b64:
-            self.validate_review(receipt, receipt.completion_bytes)
-            return self.send_completion(receipt, Path(path))
-        if receipt.registered is None:
-            return self.send_registration(receipt, Path(path))
-        return self.result(receipt, path)
-
-    def history(self, limit=100, offset=0):
-        return self.request('GET', '/dev/plans?' + urlencode({'limit': limit, 'offset': offset}))
-
-    def get(self, plan_id):
-        return self.request('GET', '/dev/plans/' + str(plan_id))
-
-    def delete(self, plan_id):
-        try:
-            record = self.get(plan_id)
-        except PrimeError as error:
-            if error.code != 'not_found':
-                raise
-            record = None
-        directory = receipt_directory(self.repo)
-        paths, cleanup = [], 'complete'
-        if record is not None:
-            if record.get('id') != plan_id:
-                raise PrimeError('invalid_plan_response', 'Plan identity did not match the requested deletion; no deletion was sent.')
-            key = [self.client.origin, record['account_id'], record['owner_id']] + [record[key] for key in ('client', 'session_id', 'plan_key', 'submission_id')]
-            path = directory / (hashlib.sha256(json_bytes(key)).hexdigest() + '.json')
-            if path.exists():
-                try:
-                    receipt = Receipt.load(path, self.repo)
-                    if (receipt.origin, receipt.account_id, receipt.owner_id) != (self.client.origin, record['account_id'], record['owner_id']):
-                        raise ValueError('Mismatched receipt')
-                    self.validate_record(receipt, record)
-                    receipt.registered = record
-                    receipt.save(path)
-                    paths.append(path)
-                except (PrimeError, KeyError, TypeError, ValueError):
-                    cleanup = 'unconfirmed'
-        else:
-            cleanup = 'unconfirmed'
-            try:
-                controls = self.settings()
-            except PrimeError:
-                controls = None
-            if controls is not None:
-                for path in directory.glob('*.json'):
-                    try:
-                        receipt = Receipt.load(path, self.repo)
-                        if ((receipt.origin, receipt.account_id, receipt.owner_id) != (self.client.origin, controls.account_id, controls.owner_id)
-                                or not isinstance(receipt.registered, dict) or receipt.registered.get('id') != plan_id):
-                            continue
-                        self.validate_record(receipt, receipt.registered)
-                        paths.append(path)
-                        cleanup = 'complete'
-                    except (PrimeError, KeyError, TypeError, ValueError):
-                        continue
-        server_status = 'deleted'
-        try:
-            self.request('DELETE', '/dev/plans/' + str(plan_id))
-        except PrimeError as error:
-            if error.code != 'not_found':
-                if paths:
-                    error.receipt = str(paths[0])
-                raise
-            server_status = 'absent_or_inaccessible'
-        for path in paths:
-            try:
-                path.unlink()
-            except OSError:
-                cleanup = 'unconfirmed'
-        result = {'status': 'deleted', 'plan_id': plan_id, 'server_status': server_status, 'local_cleanup': cleanup}
-        if cleanup == 'unconfirmed':
-            result.update(receipt_directory=str(directory), message='Server record deleted or absent/inaccessible to this caller; local cleanup unconfirmed. Inspect remaining private receipts and explicitly remove a chosen payload with resume --abandon --receipt "<path>"; abandonment does not delete server data.')
+        if not markdown.strip():
+            raise PrimeError('invalid_plan', 'The plan must be nonempty UTF-8 Markdown.')
+        body = self.bounded_payload(dict(payload, markdown=markdown))
+        result = self.request('POST', '/dev/plans', body)
+        if type(result.get('id')) is not int or result['id'] <= 0 or not isinstance(result.get('context_snapshot'), dict):
+            raise PrimeError('invalid_plan_response', 'Registration was not confirmed; inspect plan history before explicitly registering again.')
+        self.validate_context(result['context_snapshot'], payload['code_references'])
         return result
 
-    def abandon(self, path):
-        path = Path(path).absolute()
-        if path.parent != receipt_directory(self.repo):
-            raise PrimeError('invalid_receipt', 'Use a receipt in the private developer receipt directory.')
-        read_bytes(path, MAX_RECEIPT_BYTES, private=True)
-        path.unlink()
-        return {'status': 'abandoned', 'message': 'Local payload removed; an already registered server row remains in history until explicitly deleted.'}
+    def get(self, plan_id):
+        result = self.request('GET', '/dev/plans/' + str(positive_id(plan_id)))
+        if (result.get('id') != plan_id or not isinstance(result.get('markdown'), str)
+                or not isinstance(result.get('code_references'), list) or not result['code_references']
+                or not isinstance(result.get('context_snapshot'), dict)):
+            raise PrimeError('invalid_plan_response', 'The stored plan response is invalid; no reviewer should use it.')
+        self.validate_context(result['context_snapshot'], result['code_references'])
+        if result.get('review_result') is not None:
+            self.validate_review(result['review_result'], result['context_snapshot'], saved=True)
+        return result
+
+    def validate_review(self, result, snapshot, saved=False):
+        try:
+            allowed_fields = {'outcome', 'reviewer_client', 'reviewer_model', 'summary', 'findings', 'limitations', 'failure_code'}
+            if saved:
+                allowed_fields.add('saved_at')
+            valid = (isinstance(result, dict) and not set(result) - allowed_fields
+                     and result.get('outcome') in ('recorded', 'failed')
+                     and all(isinstance(result.get(key), str) and result[key].strip()
+                             for key in ('reviewer_client', 'reviewer_model', 'summary'))
+                     and isinstance(result.get('findings', []), list) and isinstance(result.get('limitations', []), list)
+                     and all(isinstance(item, str) for item in result.get('limitations', [])))
+            if not valid or saved and not aware_timestamp(result.get('saved_at')):
+                raise ValueError('Invalid review')
+            normalized = dict(result, findings=result.get('findings', []), limitations=result.get('limitations', []), failure_code=result.get('failure_code'))
+            if (result['outcome'] == 'failed' and result.get('failure_code') not in ('reviewer_unavailable', 'reviewer_failed', 'review_cancelled')
+                    or result['outcome'] == 'recorded' and result.get('failure_code') is not None):
+                raise ValueError('Invalid outcome')
+            evidence = {item['id']: item for item in snapshot.get('evidence', [])}
+            policy_ids = {str(item['external_id']) for item in snapshot.get('policies', []) if item.get('external_id') is not None}
+            normalized['findings'] = []
+            for finding in result.get('findings', []):
+                if (not isinstance(finding, dict) or set(finding) - {'severity', 'explanation', 'suggested_action', 'evidence_ids', 'code_references'}
+                        or finding.get('severity') not in ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO')
+                        or any(not isinstance(finding.get(key), str) or not finding[key].strip() for key in ('explanation', 'suggested_action'))
+                        or not isinstance(finding.get('evidence_ids', []), list)
+                        or any(not isinstance(key, str) or key not in evidence and key not in policy_ids for key in finding.get('evidence_ids', []))):
+                    raise ValueError('Invalid finding')
+                references = finding.get('code_references', [])
+                allowed = [reference_key(ref) for key in finding.get('evidence_ids', []) if key in evidence
+                           for ref in evidence[key].get('code_references', [])]
+                if not isinstance(references, list) or any(not isinstance(ref, dict) or set(ref) - set(REFERENCE_FIELDS) or reference_key(ref) not in allowed for ref in references):
+                    raise ValueError('Invalid reference')
+                normalized['findings'].append(dict(finding, evidence_ids=finding.get('evidence_ids', []),
+                                                   code_references=[dict(zip(REFERENCE_FIELDS, reference_key(ref))) for ref in references]))
+            self.bounded_payload({key: value for key, value in normalized.items() if key != 'saved_at'})
+            return normalized
+        except (ValueError, TypeError, KeyError, UnicodeError):
+            raise PrimeError('invalid_review', 'Review requires truthful reviewer identifiers, typed findings, snapshot evidence IDs and exact cited code references; saved results require an aware server timestamp.') from None
+
+    def save_review(self, plan_id, result_file):
+        self.settings().require('plan')
+        record = self.get(plan_id)
+        try:
+            result = json.loads(read_bytes(result_file, MAX_PLAN_BYTES, private=True))
+        except (ValueError, UnicodeError):
+            raise PrimeError('invalid_review', 'The separate reviewer result must be complete private UTF-8 JSON.') from None
+        expected = self.validate_review(result, record['context_snapshot'])
+        saved = self.request('PUT', '/dev/plans/' + str(plan_id) + '/review', self.bounded_payload(result))
+        confirmed = self.validate_review(saved, record['context_snapshot'], saved=True)
+        if {key: value for key, value in confirmed.items() if key != 'saved_at'} != expected:
+            raise PrimeError('invalid_review', 'The saved review differs from the submitted advisory; inspect the stored plan before repeating a save.')
+        return saved
+
+    def history(self, limit=100, offset=0, **filters):
+        return self.list_records('/dev/plans', limit, offset, filters)
+
+    def list_records(self, route, limit, offset, filters):
+        if type(limit) is not int or not 0 <= limit < 10000 or type(offset) is not int or offset < 0:
+            raise PrimeError('invalid_input', 'Pagination requires limit 0–9999 and offset zero or greater.')
+        return self.request('GET', route + '?' + urlencode(dict(limit=limit, offset=offset, **{key: value for key, value in filters.items() if value is not None})))
+
+    def delete(self, plan_id):
+        self.request('DELETE', '/dev/plans/' + str(positive_id(plan_id)))
+        return {'status': 'deleted', 'id': plan_id}
+
+    def pr_review(self, repository, pull_request):
+        self.settings()
+        result = self.request('POST', '/dev/pr-reviews', {'pr_ref': dict(repository, pull_request=positive_id(pull_request))})
+        if type(result.get('job_id')) is not int or result['job_id'] <= 0 or not isinstance(result.get('status'), str) or not result['status']:
+            raise PrimeError('invalid_response', 'PR request acceptance was not confirmed; inspect PR request history before repeating it.')
+        return result
+
+    def pr_history(self, limit=100, offset=0, **filters):
+        return self.list_records('/dev/pr-reviews', limit, offset, filters)
+
+    def context_outcome(self, context_id, issue_ids):
+        try:
+            identifier = str(UUID(context_id))
+        except (ValueError, TypeError, AttributeError):
+            raise PrimeError('invalid_input', 'Outcome reporting requires a context UUID.') from None
+        if not 1 <= len(issue_ids) <= 20 or len(set(issue_ids)) != len(issue_ids) or any(type(value) is not int or value <= 0 for value in issue_ids):
+            raise PrimeError('invalid_input', 'Report 1–20 distinct positive issue IDs from the original context.')
+        self.settings().require('outcome')
+        return self.request('POST', '/dev/contexts/' + identifier + '/outcomes', {'issue_ids': issue_ids})
+
+
+def positive_id(value):
+    if type(value) is not int or value <= 0:
+        raise PrimeError('invalid_input', 'A positive plan or pull-request ID is required.')
+    return value
 
 
 def repo_identity(remote):
@@ -578,58 +464,89 @@ def repo_identity(remote):
         remote = 'ssh://' + match[1] + '/' + match[2]
     try:
         url = urlsplit(remote)
-        if url.scheme not in ('ssh', 'https', 'http', 'git') or not url.hostname or url.query or url.fragment:
+        if url.scheme not in ('ssh', 'https', 'http', 'git') or url.query or url.fragment:
             return None
-        host, port = url.hostname.lower(), url.port
+        platform = {'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket'}.get(url.hostname)
+        if platform is None or url.port not in (None, {'ssh': 22, 'https': 443, 'http': 80, 'git': 9418}[url.scheme]):
+            return None
     except ValueError:
         return None
     path = url.path.strip('/').removesuffix('.git')
-    if '/' not in path or any(part in ('', '.', '..') for part in path.split('/')):
+    parts = path.split('/')
+    if len(parts) < 2 or platform != 'gitlab' and len(parts) != 2 or any(part in ('', '.', '..') or '%' in part for part in parts):
         return None
-    # Preserve case on arbitrary providers; false negatives are safer than incorrect context.
-    if host == 'github.com':
-        path = path.lower()
-    default_port = {'ssh': 22, 'https': 443, 'http': 80, 'git': 9418}[url.scheme]
-    return (host, port if port != default_port else None, path)
-
-
-def load_context(client, remote, repo='.'):
-    workflow = DeveloperWorkflow(client, repo)
-    workflow.settings().require('guidance')
-    scope = workflow.resolve(remote)
-    if scope.get('status') != 'resolved':
-        return {'status': scope.get('status'), 'scope': scope}
-    return {'status': 'loaded', 'context': workflow.guardrails(scope['repository_id'], scope['module_id'])}
+    return {'organization': '/'.join(parts[:-1]), 'repository': parts[-1], 'platform': platform}
 
 
 def git_remote(directory):
     try:
-        result = subprocess.run(['git', '-C', directory, 'remote', 'get-url', 'origin'],
+        result = subprocess.run(['git', '-C', str(directory), 'remote', 'get-url', 'origin'],
                                 capture_output=True, text=True, timeout=10, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def repository_scope(args, auto=True):
+    values = (args.organization, args.repository, args.platform)
+    if any(value is not None for value in values):
+        if not all(isinstance(value, str) and value.strip() and not re.search(r'[\x00-\x1f]', value) for value in values):
+            raise PrimeError('invalid_scope', 'Supply canonical --organization, --repository and --platform together.')
+        return dict(zip(('organization', 'repository', 'platform'), values))
+    if not auto:
+        return {}
+    identity = repo_identity(args.remote or git_remote(args.repo))
+    if identity is None:
+        raise PrimeError('unsupported_remote', 'Supply canonical --organization, --repository and --platform for uploaded, self-hosted or unsupported repositories.')
+    return identity
+
+
+def code_scope(args):
+    scope = repository_scope(args)
+    revisions = {key: value for key, value in (('branch', args.branch), ('commit', args.commit), ('pull_request', args.pull_request)) if value is not None}
+    if any(isinstance(value, str) and not value.strip() for value in revisions.values()):
+        raise PrimeError('invalid_scope', 'A revision selector must be nonempty.')
+    if args.pull_request is not None:
+        positive_id(args.pull_request)
+    scope.update(revisions)
+    if len(args.path) > 100:
+        raise PrimeError('invalid_scope', 'Scope accepts at most 100 relative repository paths.')
+    paths = []
+    for value in args.path:
+        if (not value or len(value) > 4096 or '\\' in value or '\x00' in value or value.startswith('/')
+                or re.match(r'^[A-Za-z]:', value) or '..' in value.split('/')):
+            raise PrimeError('invalid_scope', 'Use relative POSIX file or directory paths without traversal, at most 4096 characters each.')
+        path = str(PurePosixPath(value))
+        if path == '.':
+            raise PrimeError('invalid_scope', 'Each path must identify a file or directory.')
+        paths.append(dict(scope, filename=path))
+    return paths or [scope]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', nargs='?', default='guidance', choices=('guidance', 'settings', 'resolve', 'guardrails', 'context', 'plan-register', 'plan-complete', 'plan-list', 'plan-get', 'plan-delete', 'resume'))
+    parser.add_argument('command', nargs='?', default='guidance', choices=('guidance', 'settings', 'guardrails', 'context', 'plan-register', 'plan-save-review', 'plan-list', 'plan-get', 'plan-delete', 'pr-review', 'pr-review-list', 'context-outcome'))
     parser.add_argument('--repo', default='.')
     parser.add_argument('--allow-origin')
     parser.add_argument('--approve-origin')
     parser.add_argument('--output', type=Path, help='New complete private JSON artifact outside the repository')
-    parser.add_argument('--receipt', type=Path)
-    parser.add_argument('--abandon', action='store_true', help='With resume, delete the local pending payload without an API request')
     parser.add_argument('--plan-file', type=Path)
     parser.add_argument('--result-file', type=Path)
     parser.add_argument('--plan-id', type=int)
-    parser.add_argument('--repository-id', type=int)
-    parser.add_argument('--module-id', type=int)
     parser.add_argument('--path', action='append', default=[])
     parser.add_argument('--intent', default='')
     parser.add_argument('--remote')
-    for name in ('title', 'client', 'client-version', 'session-id', 'plan-key', 'submission-id', 'branch', 'base-sha'):
+    parser.add_argument('--organization')
+    parser.add_argument('--repository')
+    parser.add_argument('--platform', choices=PLATFORMS)
+    revision = parser.add_mutually_exclusive_group()
+    revision.add_argument('--branch')
+    revision.add_argument('--commit')
+    revision.add_argument('--pull-request', type=int)
+    for name in ('title', 'client', 'client-version', 'base-commit', 'owner-id', 'context-id'):
         parser.add_argument('--' + name)
+    parser.add_argument('--status', choices=('registered', 'review_recorded', 'review_failed'))
+    parser.add_argument('--issue-id', action='append', type=int, default=[])
     parser.add_argument('--limit', type=int, default=100)
     parser.add_argument('--offset', type=int, default=0)
     args = parser.parse_args()
@@ -638,71 +555,64 @@ def main():
         if args.approve_origin:
             print(json.dumps(approve_origin(args.approve_origin)))
             return 0
-        if args.command == 'resume' and args.abandon:
-            if args.receipt is None:
-                raise PrimeError('missing_input', 'Specify --receipt for explicit local abandonment.')
-            result = DeveloperWorkflow(None, args.repo).abandon(args.receipt)
-        else:
-            value = os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN
-            try:
-                origin = validate_origin(value, args.allow_origin)
-            except PrimeError as error:
-                if error.code != 'origin_not_approved':
-                    raise
-                origin = validate_origin(value, args.allow_origin, load_approved_origins())
-            token = resolve_token()
-            workflow = DeveloperWorkflow(Client(origin, token), args.repo)
-            command = args.command
-            if command == 'guidance':
-                result = load_context(workflow.client, args.remote or git_remote(args.repo), args.repo)
-            elif command == 'settings':
-                result = workflow.settings().response
-            elif command == 'resolve':
-                result = workflow.resolve(args.remote or git_remote(args.repo))
-            elif command in ('guardrails', 'context', 'plan-register'):
-                if not args.repository_id or not args.module_id:
-                    raise PrimeError('missing_scope', 'Specify resolved --repository-id and --module-id; ambiguous scope must be selected explicitly.')
-                if command == 'guardrails':
-                    result = workflow.guardrails(args.repository_id, args.module_id)
-                elif command == 'context':
-                    result = workflow.context(args.repository_id, args.module_id, args.path, args.intent)
-                else:
-                    names = ('title', 'client', 'client_version', 'session_id', 'plan_key', 'submission_id')
-                    values = vars(args)
-                    if args.plan_file is None or any(not values[name] for name in names):
-                        raise PrimeError('missing_input', 'Registration requires plan file, title, actual host client/version, session, plan key and submission ID.')
-                    payload = {name: values[name] for name in names}
-                    payload.update(repository_id=args.repository_id, module_id=args.module_id, paths=args.path, branch=args.branch, base_sha=args.base_sha)
-                    result = workflow.register(args.plan_file, payload)
-            elif command == 'plan-complete':
-                if args.receipt is None or args.result_file is None:
-                    raise PrimeError('missing_input', 'Completion requires --receipt and --result-file from a separate reviewer.')
-                result = workflow.complete(args.receipt, args.result_file)
-            elif command == 'resume':
-                if args.receipt is None:
-                    raise PrimeError('missing_input', 'Explicit resume requires --receipt.')
-                result = workflow.resume(args.receipt)
-            elif command == 'plan-list':
-                result = workflow.history(args.limit, args.offset)
+        value = os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN
+        try:
+            origin = validate_origin(value, args.allow_origin)
+        except PrimeError as error:
+            if error.code != 'origin_not_approved':
+                raise
+            origin = validate_origin(value, args.allow_origin, load_approved_origins())
+        token = resolve_token()
+        workflow = DeveloperWorkflow(Client(origin, token))
+        command = args.command
+        if command == 'settings':
+            result = workflow.settings().response
+        elif command in ('guidance', 'guardrails', 'context', 'plan-register'):
+            references = code_scope(args)
+            if command in ('guidance', 'guardrails'):
+                result = workflow.guardrails(references)
+            elif command == 'context':
+                result = workflow.context(references, args.intent)
             else:
-                if args.plan_id is None or args.plan_id <= 0:
-                    raise PrimeError('missing_input', 'History detail/deletion requires a positive --plan-id.')
-                result = workflow.get(args.plan_id) if command == 'plan-get' else workflow.delete(args.plan_id)
-            result['api_origin'] = origin
+                names = ('title', 'client', 'client_version')
+                values = vars(args)
+                if args.plan_file is None or any(not values[name] or not values[name].strip() for name in names):
+                    raise PrimeError('missing_input', 'Registration requires a plan file, title and actual host client/version.')
+                payload = {name: values[name] for name in names}
+                payload['code_references'] = references
+                if args.base_commit is not None:
+                    if not args.base_commit.strip():
+                        raise PrimeError('invalid_scope', 'The base commit must be nonempty.')
+                    payload['base_commit_ref'] = dict(repository_scope(args), commit=args.base_commit)
+                result = workflow.register(args.plan_file, payload)
+        elif command == 'plan-save-review':
+            if args.result_file is None:
+                raise PrimeError('missing_input', 'Saving requires --result-file from the separate reviewer.')
+            result = workflow.save_review(positive_id(args.plan_id), args.result_file)
+        elif command in ('plan-list', 'pr-review-list'):
+            filters = dict(repository_scope(args, auto=False), owner_id=args.owner_id)
+            if command == 'plan-list':
+                filters.update(status=args.status, title=args.title)
+                result = workflow.history(args.limit, args.offset, **filters)
+            else:
+                result = workflow.pr_history(args.limit, args.offset, **filters)
+        elif command in ('plan-get', 'plan-delete'):
+            plan_id = positive_id(args.plan_id)
+            result = workflow.get(plan_id) if command == 'plan-get' else workflow.delete(plan_id)
+        elif command == 'pr-review':
+            result = workflow.pr_review(repository_scope(args), positive_id(args.pull_request))
+        else:
+            result = workflow.context_outcome(args.context_id, args.issue_id)
         if args.output:
             output_path = args.output.absolute()
             private_directory(output_path.parent, args.repo)
-            data = json.dumps(result, ensure_ascii=True, indent=2)
-            if token:
-                data = data.replace(json.dumps(token)[1:-1], '[REDACTED]')
+            data = json.dumps(result, ensure_ascii=True, indent=2).replace(json.dumps(token)[1:-1], '[REDACTED]')
             durable_write(output_path, data.encode())
-            result = {'status': result.get('status', 'loaded'), 'output_path': str(output_path),
-                      'receipt': result.get('receipt'), 'plan_id': (result.get('plan') or {}).get('id')}
+            result = {'status': result.get('status', 'saved'), 'output_path': str(output_path),
+                      **{key: result[key] for key in ('id', 'context_id', 'saved_at', 'job_id') if key in result}}
         exit_code = 0
     except PrimeError as error:
         result = {'status': 'error', 'code': error.code, 'message': str(error), 'ordinary_coding': 'available'}
-        if error.receipt:
-            result['receipt'] = error.receipt
         exit_code = 1
     output = json.dumps(result, ensure_ascii=True)
     if token:

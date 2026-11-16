@@ -7,10 +7,10 @@ Use browser login when available, or create a PAT in Prime Security under **Sett
 The operator skill's `scripts/prime_login.py` writes the same private token file this helper reads. If `prime` is already installed, locate its installed directory and run in your terminal:
 
 ```bash
-python3 "<installed-prime-skill-directory>/scripts/prime_login.py"
+PRIME_API_URL="$publicF" python3 "<installed-prime-skill-directory>/scripts/prime_login.py"
 ```
 
-Use the same `PRIME_API_URL` for login and guardrail requests. Complete the browser authorization yourself. Login tokens expire after 30 days; re-run this command to renew them. A 403 can also mean missing permissions, which re-login alone does not fix.
+`publicF` must be the verified, user-authorized HTTPS dev front-service origin. Use it explicitly as `PRIME_API_URL` for login and every helper invocation during this alpha acceptance. Complete the browser authorization yourself. Login tokens expire after 30 days; re-run this command to renew them. A 403 can also mean missing permissions, which re-login alone does not fix.
 
 The standalone dev skill does **not** bundle the operator's login script. If it is absent, install the operator plugin or skill using the [repository installation guide](https://github.com/PrimeSecurityAI/prime-security-ai-plugins#plugin-or-skill), or run `plugins/prime-security-operator/skills/prime/scripts/prime_login.py` from a reviewed checkout of that repository. Use the PAT setup below if you do not want the operator skill or cannot open a browser. Do not assume a sibling operator directory exists in an installed dev skill.
 
@@ -63,7 +63,7 @@ If replacing an environment credential, restart the agent from the updated envir
 Before sending credentials to a custom origin, show the user that origin and obtain their approval unless they already explicitly approved it in the task. Then invoke:
 
 ```bash
-PRIME_API_URL=https://prime.example.com python3 "<skill-directory>/scripts/prime_guardrails.py" --allow-origin https://prime.example.com --repo "<repository>"
+PRIME_API_URL="$publicF" python3 "<skill-directory>/scripts/prime_guardrails.py" --allow-origin "$publicF" --repo "<repository>"
 ```
 
 The flag must exactly match the normalized origin. Approval already given for the task can be reused by passing the flag again without asking the user again.
@@ -71,7 +71,7 @@ The flag must exactly match the normalized origin. Approval already given for th
 For a deployment you want to trust across sessions, explicitly save that **exact** origin once:
 
 ```bash
-python3 "<skill-directory>/scripts/prime_guardrails.py" --approve-origin https://prime.example.com
+python3 "<skill-directory>/scripts/prime_guardrails.py" --approve-origin "$publicF"
 ```
 
 This only writes `${XDG_CONFIG_HOME:-$HOME/.config}/prime-security/approved-origins.json`; it performs no login or API request. Future runs with that origin need no flag. Saved approvals are read only when needed: a broken approval file does not block the default origin or a matching explicit `--allow-origin`. The configuration directory must be private (mode 700) and the approval file is mode 600 on POSIX. Wildcards and sibling domains are not trusted. Remove an origin from that JSON list to revoke saved approval. Agents should save approval only when the user explicitly asks to trust that destination across sessions.
@@ -84,18 +84,18 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 |---|---|
 | `missing_credentials`, `invalid_credentials` | Configure the PAT using hidden terminal input. |
 | `unsafe_token_file`, `unreadable_token_file` | Check ownership, regular-file status, and mode 600. |
-| `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Then explicitly resume the original receipt. |
+| `authentication_failed` | Re-run browser login or replace the PAT; unset/replace any expired environment override. Inspect plan/PR history before explicitly repeating an uncertain write. |
 | `origin_not_approved`, `invalid_origin` | Correct the origin and explicitly approve a custom deployment. |
 | `invalid_approval_file` | Check the owner-only configuration directory, approval-file permissions, and JSON list of exact origins. |
 | `file_write_failed` | Choose a new output filename in an existing private directory. Existing files are never overwritten. |
 | `rate_limited`, `network_error`, `timeout` | Check service/connectivity and retry later; do not use stale policy data. |
 | `permission_denied` | Request required access; a renewed credential alone may not fix 403. |
 | `feature_disabled`, `invalid_settings`, `unavailable` | Pause security operations; ordinary coding continues. Retry explicitly after current settings can be read. |
-| `context_settings_changed` | Use an explicit new submission with current context; preserve or abandon the old receipt. |
+| `conflict` | Pause the attempted operation; read fresh settings and choose an explicit next step. |
 | Schema/contract errors | Report the mismatch against [the reviewed contract](api-contract.md); update/test the helper before use. |
 
 Diagnostics never need the token, authorization header, raw HTTP error body, or private repository source.
 
-## Pending work after renewal
+## Work after renewal
 
-Renew authentication without changing the original approved origin/account/owner. No token file is needed when an environment PAT is configured. Use `resume --receipt <path>` explicitly; it refreshes settings and replays the saved bytes even when original files changed. Receipts are private pending payloads, not credentials or reusable guidance. See [durable recovery and cleanup](api-contract.md#durable-recovery). History and authorized deletion remain available when security controls are off.
+Read fresh settings before new security work. Inspect `plan-list`/`plan-get` after an uncertain registration and inspect `review_result` after an uncertain review save before explicitly repeating either operation. Every successful registration creates a new row; review PUT replaces the current result. History and authorized deletion remain available when controls are off or settings cannot be read. See [explicit recovery and cleanup](api-contract.md#explicit-recovery-and-cleanup) for legacy artifact cleanup.

@@ -24,10 +24,25 @@ Root owns deployment, dev credentials/browser authorization, installation, actua
 4. Exercise fresh/expired/renewed environment/file credentials and exact-origin trust. For uncertain registration/save, inspect server history before choosing an explicit repeated write. Verify server deletion separately from local artifact cleanup and disclose backup retention.
 5. Explicitly create a real dev PR review: accepted native job ID → receipt list. Check CMS-owned results through its proper workflow; receipt history is not live job status. Explicitly report an actually addressed issue using the original context UUID and numeric `code_issue.source_entity_id`; verify developer-reported mitigation activity without changing the CMS finding.
 6. Verify actual supported owner/admin boundaries and account-closure purge via proper operator/UI flow. Usage/activity/settings mutation are not required helper commands.
-7. For every additional host (Codex, OpenCode, Cursor, Copilot, Pi), prove installation/authentication/skill selection and one separate reviewer with truthful client/model before claiming that capability. All remain pending for this canonical alpha. Unsupported reviewers truthfully record `reviewer_unavailable` or leave plans registered.
+7. For every additional host (Codex, OpenCode, Cursor, Copilot, Pi), prove installation/authentication/skill selection and one separate reviewer with truthful client/model before claiming that capability. The targeted Codex result is recorded below; the other additional hosts remain pending. Unsupported reviewers truthfully record `reviewer_unavailable` or leave plans registered.
 8. Hooks/adapters are reminders. Prove startup/resume/compaction context reaches each model without accumulating messages. Automatic Claude ExitPlanMode capture is a separate unpassed gate; preserve human approval and verify actual host payloads before implementing it. Windows remains unverified.
 9. Validate update/uninstall/restart without duplicates. Remove only task-owned output/review/guidance files while preserving original plans. Legacy receipt files require deliberate user cleanup; shared credentials and approvals persist.
 
 ## Publication and rollback
 
 Publish only the proven client subset after installation, authentication, recovery, separate-review and data-retention gates pass. Pin a reviewed immutable release reference. Older plugin/server contracts cannot honor this managed flow; mismatches fail safely without generic fallback. Unit tests and manifests alone do not establish customer release readiness.
+
+## Targeted real-client verification, November 17, 2026
+
+The installed `1.5.0-alpha.1` plugin completed the explicit managed workflow against a personal DEV deployment in both clients below. This verifies the named workflow, not full customer certification.
+
+| Client | Verified workflow | Remaining boundaries |
+| --- | --- | --- |
+| Claude Code `2.1.325` | Installed skill discovery, authenticated settings/guidance/context, one synthetic plan, actual separate read-only reviewer, save, authoritative GET and history | Startup/resume hooks, automatic plan capture, MCP OAuth, expired/renewed credentials, provider PR workflow and browser acceptance were not established |
+| Codex CLI `0.169.0` | Native installed skill discovery, authenticated settings/guidance/context, one synthetic plan, native separate reviewer, save, authoritative GET and history; actual model `gpt-6.1-sol` | SessionStart execution and persisted hook trust remain unverified; no automatic-review or separate OS-sandbox guarantee is made |
+
+Both workflows kept account settings unchanged, used explicit approved DEV origins and retained private artifacts. No source scan, PR job or mitigation report was generated. Counts came from actual returned arrays, rather than summed package membership counts. Original evidence scope and stored-analysis limitations were retained.
+
+Codex acceptance used per-run isolation and a narrow reviewer role as test hardening. An ephemeral native launch failed before child creation; a normal persistent continuation reviewed the same registered plan without another registration. The failed launch is not a second review. Ephemeral reviewer execution is not certified by this result.
+
+The target URL must be configured for each host: Claude project environment settings do not configure Codex. Codex can use the project's `shell_environment_policy.set.PRIME_API_URL`, or an explicit inherited environment value; helper invocations still pass the exact matching `--allow-origin`. Never infer that installing the plugin changes its API origin or grants broader permissions.

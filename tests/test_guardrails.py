@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
-from test_developer_workflow import Boundary, context, CONTEXT_ID
+from test_developer_workflow import Boundary, Response, context, settings, CONTEXT_ID
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/prime-security-dev/skills/prime-code-guardrails/scripts/prime_guardrails.py'
 
@@ -63,12 +63,22 @@ class GuardrailsTests(unittest.TestCase):
         normalize = self.api.repo_identity
         self.assertEqual(normalize('git@github.com:Acme/project.git'), normalize('https://github.com/Acme/project/'))
         self.assertEqual(normalize('https://user:password@gitlab.com/Example/Group/App.git'),
-                         {'organization': 'Example/Group', 'repository': 'App', 'platform': 'gitlab'})
+                         self.api.RepositoryScope('Example/Group', 'App', 'gitlab'))
         self.assertEqual(normalize('ssh://git@bitbucket.org/Team/App.git'),
-                         {'organization': 'Team', 'repository': 'App', 'platform': 'bitbucket'})
-        self.assertEqual(normalize('https://github.com/Acme/Project')['repository'], 'Project')
+                         self.api.RepositoryScope('Team', 'App', 'bitbucket'))
+        self.assertEqual(normalize('https://github.com/Acme/Project').repository, 'Project')
         self.assertIsNone(normalize('https://user:password@private.example/org/repo'))
         self.assertIsNone(normalize('/local/repo'))
+        baseline = self.api.baseline_repo_identity
+        self.assertEqual(baseline('git@github.com:Acme/App.git'), baseline('https://github.com/acme/app'))
+        self.assertNotEqual(baseline('https://private.example/Org/App'), baseline('https://private.example/org/app'))
+        self.assertNotEqual(baseline('ssh://private.example:2222/Org/App'), baseline('ssh://private.example/Org/App'))
+        self.assertIsNone(normalize('ssh://github.com:2222/Org/App'))
+        self.assertIsNone(normalize('https://github.com/Org/A%70p'))
+        repos = [dict(id=1, repo_url='git@github.com:Acme/App.git'), dict(id=2, repo_url='https://github.com/acme/app')]
+        with self.assertRaises(self.api.PrimeError) as caught:
+            self.api.match_repo(repos, 'https://github.com/Acme/App')
+        self.assertEqual(caught.exception.code, 'ambiguous_repository')
 
     def invoke(self, *flags, boundary=None):
         boundary = boundary or Boundary()
@@ -98,7 +108,7 @@ class GuardrailsTests(unittest.TestCase):
         status, result, calls = invoke('pr-review-list', '--organization', 'Example/Group', '--repository', 'App', '--platform', 'gitlab', '--owner-id', 'user & name')
         self.assertEqual(status, 0)
         self.assertEqual(calls[-1][2]['owner_id'], ['user & name'])
-        self.assertEqual(invoke('--remote', 'https://user:password@private.example/repo')[1]['code'], 'unsupported_remote')
+        self.assertEqual(invoke('context', '--remote', 'https://user:password@private.example/repo')[1]['code'], 'unsupported_remote')
         with patch('sys.stderr', new_callable=io.StringIO), patch.object(sys, 'argv', [str(SCRIPT), '--branch', 'main', '--commit', 'abc']), self.assertRaises(SystemExit):
             self.api.main()
 
@@ -123,6 +133,44 @@ class GuardrailsTests(unittest.TestCase):
         boundary.summary_error = True
         self.assertEqual(self.invoke('guardrails', '--remote', 'https://gitlab.com/Example/Group/App', boundary=boundary)[1]['repository'],
                          {'status': 'unavailable', 'reason': 'unavailable'})
+
+    def test_baseline_pagination_completeness_and_policy_provenance(self):
+        class Pages(Boundary):
+            def open(inner, request, timeout):
+                if '/guardrails?' not in request.full_url:
+                    return super().open(request, timeout)
+                response = inner.pages.pop(0)
+                if isinstance(response, Exception):
+                    raise response
+                return Response(response)
+        policy = dict(guardrail_title='Same title', guardrail='Full policy', policy_id='policy-a',
+                      policy_name='Source A', category='security', framework='Framework', secret='filtered')
+        def page(rows, offset=0, total=None, more=None):
+            return dict(results=rows, size=len(rows), limit=100, offset=offset, total=total, has_next=more)
+        for pages, expected in [([page([], more=False)], []),
+                                ([page([policy]), page([], offset=1)], [policy]),
+                                ([page([policy, dict(policy, policy_id='policy-b', policy_name='Source B')], more=False)],
+                                 [policy, dict(policy, policy_id='policy-b', policy_name='Source B')])]:
+            boundary = Pages()
+            boundary.capabilities = dict(developer_security_enabled=False)
+            boundary.pages = pages
+            status, result, _ = self.invoke('--repo', '/no/git', boundary=boundary)
+            self.assertEqual(status, 0)
+            self.assertEqual(result['guardrails'], [{key: value for key, value in item.items() if key != 'secret'} for item in expected])
+        for pages, code in [
+            ([page([policy], total=2, more=True), HTTPError('https://example.invalid', 503, '', {}, io.BytesIO())], 'unavailable'),
+            ([page([policy], total=2, more=True), page([policy], offset=1, total=2, more=False)], 'repeated_page'),
+            ([page([policy], total=2, more=False)], 'incomplete_pagination'),
+            ([page([policy], total=2, more=True), page([], offset=1, total=3, more=False)], 'changed_pagination'),
+            ([page([dict(policy, guardrail='')], more=False)], 'invalid_guardrail'),
+        ]:
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                boundary = Pages()
+                boundary.capabilities = dict(developer_security_enabled=False)
+                boundary.pages = pages
+                status, result, _ = self.invoke('--repo', '/no/git', '--output', str(Path(directory) / 'policies.json'), boundary=boundary)
+                self.assertEqual((status, result['code']), (1, code))
+                self.assertEqual(list(Path(directory).iterdir()), [])
 
     def test_disabled_advanced_commands_stop_before_scope_or_plan_inputs(self):
         for command in ('settings', 'context', 'plan-register', 'plan-save-review', 'plan-list', 'plan-get',
@@ -186,6 +234,7 @@ class GuardrailsTests(unittest.TestCase):
             client.get('/dev/guardrails')
         self.assertNotIn('secret-token', str(caught.exception))
         self.assertEqual(caught.exception.code, 'authentication_failed')
+        self.assertNotIn('history', str(caught.exception))
 
     def test_malformed_http_and_truncated_body_are_safe_errors(self):
         for error in [BadStatusLine('Bearer secret-token'), IncompleteRead(b'secret-token', 100)]:
@@ -195,6 +244,7 @@ class GuardrailsTests(unittest.TestCase):
                 with self.assertRaises(self.api.PrimeError) as caught:
                     client.get('/dev/guardrails')
                 self.assertNotIn('secret-token', str(caught.exception))
+                self.assertNotIn('history', str(caught.exception))
 
     def test_transport_response_bounds_and_invocation_deadline(self):
         for data, code in [(b'x' * (self.api.MAX_RESPONSE_BYTES + 1), 'response_too_large'),
@@ -208,6 +258,7 @@ class GuardrailsTests(unittest.TestCase):
         with self.assertRaises(self.api.PrimeError) as caught:
             client.get('/dev/settings')
         self.assertEqual(caught.exception.code, 'timeout')
+        self.assertNotIn('history', str(caught.exception))
 
     def test_real_transport_refuses_redirect_before_sending_second_request(self):
         paths = []
@@ -258,6 +309,7 @@ class GuardrailsTests(unittest.TestCase):
             status = json.loads(stdout.getvalue())
             self.assertEqual(status['output_path'], str(output))
             self.assertEqual(status['context_id'], CONTEXT_ID)
+            self.assertEqual(status['guardrail_count'], 1)
             self.assertLess(len(stdout.getvalue()), 1000)
             artifact = json.loads(output.read_text())
             self.assertEqual(artifact['policies'][0]['guardrail'], 'x' * 50000)
@@ -265,18 +317,118 @@ class GuardrailsTests(unittest.TestCase):
             if os.name == 'posix':
                 self.assertEqual(output.stat().st_mode & 0o777, 0o600)
 
-    def test_output_never_overwrites_an_existing_file(self):
+    def test_output_rejected_before_any_request(self):
         with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'existing.json'
-            output.write_text('keep this')
-            with patch.object(self.api, 'resolve_token', return_value='synthetic-secret'), \
-                 patch.object(self.api, 'build_opener', return_value=Boundary()), \
-                 patch.dict(os.environ, {'PRIME_API_URL': '', 'XDG_CONFIG_HOME': directory}), \
-                 patch.object(sys, 'argv', [str(SCRIPT), '--remote', 'https://gitlab.com/Example/Group/App', '--branch', 'feature/refunds', '--path', 'src/api.py', '--output', str(output)]), \
-                 patch('sys.stdout', new_callable=io.StringIO) as stdout:
-                self.assertEqual(self.api.main(), 1)
-            self.assertEqual(json.loads(stdout.getvalue())['status'], 'error')
-            self.assertEqual(output.read_text(), 'keep this')
+            root = Path(directory)
+            repo = root / 'repo'
+            repo.mkdir()
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subdir = repo / 'src'
+            subdir.mkdir()
+            existing = root / 'existing.json'
+            existing.write_text('keep this')
+            dangling = root / 'dangling.json'
+            dangling.symlink_to(root / 'missing')
+            unsafe = root / 'public'
+            unsafe.mkdir(mode=0o755)
+            for output, code in [(existing, 'file_write_failed'), (dangling, 'file_write_failed'),
+                                 (unsafe / 'out.json', 'unsafe_artifact_directory'),
+                                 (repo / '.private/out.json', 'unsafe_artifact_directory')]:
+                for command in ('plan-register', 'plan-save-review', 'plan-delete', 'pr-review'):
+                    with self.subTest(output=output, command=command):
+                        boundary = Boundary()
+                        status, result, calls = self.invoke(command, '--repo', str(subdir), '--output', str(output), boundary=boundary)
+                        self.assertEqual((status, result['code'], calls), (1, code, []))
+            self.assertEqual(existing.read_text(), 'keep this')
+            marker = repo / '.git'
+            marker.rename(repo / '.git-storage')
+            marker.write_text('gitdir: .git-storage')
+            self.assertEqual(self.invoke('pr-review', '--repo', str(subdir), '--output', str(repo / '.private/out.json'))[1]['code'],
+                             'unsafe_artifact_directory')
+
+    def test_late_output_failure_keeps_confirmed_write_identifiers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = root / 'plan.md'
+            plan.write_text('# Original plan')
+            for command, flags, key, identifier in [
+                ('plan-register', ['--plan-file', str(plan), '--title', 'Plan', '--client', 'test', '--client-version', '1'], 'id', 11),
+                ('pr-review', ['--pull-request', '42'], 'job_id', 91),
+            ]:
+                with self.subTest(command=command), patch.object(self.api.os, 'link', side_effect=OSError('Full disk')):
+                    boundary = Boundary()
+                    status, result, calls = self.invoke(command, '--remote', 'https://github.com/Acme/App',
+                                                       '--output', str(root / 'output.json'), *flags, boundary=boundary)
+                    self.assertEqual((status, result['code'], result[key]), (1, 'file_write_failed', identifier))
+                    self.assertIn('history', result['message'])
+                    self.assertNotIn('no request was sent', result['message'])
+                    self.assertEqual(sum(method == 'POST' for method, _, _, _, _ in calls), 1)
+            boundary = Boundary()
+            status, result, calls = self.invoke('plan-register', '--remote', 'https://github.com/Acme/App',
+                '--branch', 'feature', '--path', 'src', '--base-commit', 'abc', '--plan-file', str(plan),
+                '--title', 'Plan', '--client', 'test', '--client-version', '1', '--output', str(root / 'plan.json'), boundary=boundary)
+            self.assertEqual((status, result['id'], result['guardrail_count']), (0, 11, 1))
+            self.assertEqual(calls[-1][3]['base_commit_ref'], dict(organization='Acme', repository='App', platform='github', commit='abc'))
+            boundary.capabilities = dict(developer_security_enabled=False)
+            status, result, _ = self.invoke('--repo', '/no/git', '--output', str(root / 'account.json'), boundary=boundary)
+            self.assertEqual((status, result['guardrail_count'], result['repository_status']), (0, 2, 'no_supported_remote'))
+
+    def test_created_plan_snapshot_failure_reports_known_plan(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plan = Path(directory) / 'plan.md'
+            plan.write_text('# Plan')
+            class MissingSnapshot(Boundary):
+                def open(inner, request, timeout):
+                    response = super().open(request, timeout)
+                    if request.get_method() == 'POST' and request.full_url.endswith('/dev/plans'):
+                        return Response(dict(id=11))
+                    return response
+            status, result, _ = self.invoke('plan-register', '--remote', 'https://github.com/Acme/App',
+                '--plan-file', str(plan), '--title', 'Plan', '--client', 'test', '--client-version', '1', boundary=MissingSnapshot())
+            self.assertEqual((status, result['code'], result['id']), (1, 'invalid_plan_snapshot', 11))
+            for snapshot in (dict(context(), code_references=[dict(organization='Other')]),
+                             dict(context(), policies=[dict(guardrail_title='', guardrail='text')])):
+                boundary = Boundary()
+                boundary.snapshot = snapshot
+                status, result, calls = self.invoke('plan-register', '--remote', 'https://github.com/Acme/App',
+                    '--plan-file', str(plan), '--title', 'Plan', '--client', 'test', '--client-version', '1', boundary=boundary)
+                self.assertEqual((status, result['code'], result['id']), (1, 'invalid_plan_snapshot', 11))
+                self.assertIn('plan-get --plan-id 11', result['message'])
+                self.assertIn('history', result['message'])
+                self.assertEqual(list(boundary.rows), [11])
+
+    def test_enabled_account_guidance_requires_fresh_controls_and_valid_selectors(self):
+        for remote in ('https://private.example/org/repo', ''):
+            boundary = Boundary()
+            status, result, calls = self.invoke('guidance', '--repo', '/no/git', '--remote', remote, boundary=boundary)
+            self.assertEqual(status, 0)
+            self.assertEqual(len(result['guardrails']), 2)
+            self.assertIn('account-wide', result['limitations'][0].lower())
+            self.assertEqual([call[1] for call in calls][:3], ['/dev/capabilities', '/dev/settings', '/guardrails'])
+            for flags, expected in [(['--path', '../bad'], 'invalid_scope'), (['--branch', ' '], 'invalid_scope'),
+                                    (['--organization', 'Acme'], 'invalid_scope')]:
+                self.assertEqual(self.invoke('--repo', '/no/git', '--remote', remote, *flags)[1]['code'], expected)
+            for command in ('context', 'plan-register'):
+                self.assertEqual(self.invoke(command, '--repo', '/no/git', '--remote', remote)[1]['code'], 'unsupported_remote')
+            boundary = Boundary()
+            boundary.controls = settings(False, True)
+            self.assertEqual(self.invoke('--repo', '/no/git', '--remote', remote, boundary=boundary)[1]['code'], 'feature_disabled')
+            boundary.fail_settings = True
+            self.assertEqual(self.invoke('--repo', '/no/git', '--remote', remote, boundary=boundary)[1]['code'], 'unavailable')
+            boundary.fail_settings = False
+            boundary.controls = dict(settings(), caller={})
+            self.assertEqual(self.invoke('--repo', '/no/git', '--remote', remote, boundary=boundary)[1]['code'], 'invalid_settings')
+        for code in (401, 404, 503):
+            class ManagedError(Boundary):
+                def open(inner, request, timeout):
+                    if request.full_url.endswith('/dev/guardrails'):
+                        inner.calls.append((request.get_method(), '/dev/guardrails', {}, None, {}))
+                        raise HTTPError(request.full_url, code, '', {}, io.BytesIO())
+                    return super().open(request, timeout)
+            boundary = ManagedError()
+            status, result, calls = self.invoke('--remote', 'https://github.com/Acme/App', boundary=boundary)
+            self.assertEqual(status, 1)
+            self.assertEqual([call[1] for call in calls], ['/dev/capabilities', '/dev/settings', '/dev/guardrails'])
 
     def test_origin_approval_persists_only_the_exact_origin_without_network(self):
         with tempfile.TemporaryDirectory() as directory, \

@@ -1,12 +1,14 @@
 # Prime Security Dev release checklist
 
-Proposed unpublished version: **1.5.0-alpha.2**. Record immutable commit, actual client/model versions, OS and verified dev API origin with results. Operator behavior/version stays unchanged. Local checks cover synthetic helper behavior and reminder packaging; the current canonical alpha has no completed real-client certification.
+Proposed unpublished version: **1.5.0-alpha.3**. Record immutable commit, actual client/model versions, OS and verified dev API origin with results. Operator behavior/version stays unchanged. Local checks cover synthetic helper behavior and reminder packaging; the current canonical alpha has no completed real-client certification.
 
 ## Local implementation checks
 
 - Run `python3 -m unittest discover -s tests -v`, `node --test tests/opencode.test.mjs tests/pi.test.mjs`, and `claude plugin validate` for dev, operator and root marketplace.
 - Run Python tests with an available Python 3.9 interpreter; if unavailable, mark compatibility CI-only rather than deriving it from modern Python.
 - Every API invocation reads exact-boolean GET `/dev/capabilities` first. False permits only stable account-wide guidance and optional repository summary, including without Git or connected scope; all advanced commands stop. Invalid/unavailable/auth-failed capabilities and failed core policy/managed requests never select another mode. Optional summary failure preserves valid stable policies. Managed requests use public front-service `/dev`; canonical repository/code references replace numeric repository/module selection. Scoped guardrails uses POST. List filters are explicit canonical trios and queries are encoded.
+- Enabled guidance/guardrails without supported local repository identity may load account-wide policies only after valid explicit selectors and fresh guidance=true; disclose no code-area/revision coverage. Scoped API failures never select this branch.
+- Validate output parent/target before API dispatch; preserve known IDs on late storage or created-snapshot failures. Reconcile receipt policy counts and read every full text in bounded chunks.
 - Current `dev_guardrails_enabled` and `security_plan_enabled` are independent. Guidance/context need guidance; register/save need plans; PR creation requires the managed capability but neither per-account switch. Settings failures pause new security work while history/get/delete/PR history remain direct only when capability negotiation succeeds as enabled. Capability/auth errors stop without selecting stable mode.
 - Synthetic HTTP checks cover register `{id,context_snapshot}`, GET normalized Markdown/snapshot, separate-review JSON citation validation, PUT saved result plus aware `saved_at`, requested history/delete, native PR acceptance/list and explicit context outcomes.
 - Optional review arrays default empty. Findings use CMS severity, snapshot evidence/policy IDs and exact evidence code references, including foreign repositories/revisions. Preserve source coverage and **Developer-agent review · Client-reported advisory**.
@@ -32,7 +34,7 @@ Root owns deployment, dev credentials/browser authorization, installation, actua
 
 Deploy the rollout backend exposing authenticated GET `/dev/capabilities` before distributing this plugin update. Missing or incompatible capabilities stop security work, including stable guidance; older backends do not support this rollout.
 
-The dev plugin version advances to `1.5.0-alpha.2` because native Claude updates can report an unchanged `1.5.0-alpha.1` as up to date while retaining the previous cached helper and skill. A version increment is required for this native update path. Update through the client and verify its installed version and files; do not manually modify plugin caches. Historical `1.5.0-alpha.1` acceptance below remains evidence for that earlier installation only.
+The dev plugin version advances to `1.5.0-alpha.3` because native Claude updates can report an unchanged `1.5.0-alpha.1` as up to date while retaining the previous cached helper and skill. A version increment is required for this native update path. Update through the client and verify its installed version and files; do not manually modify plugin caches. Historical alpha.1 and alpha.2 evidence remains evidence only for those earlier versions. This alpha.3 fixes pre-dispatch output validation, known-write recovery diagnostics and enabled account-wide guidance without canonical identity; it requires fresh native update/acceptance validation.
 
 Publish only the proven client subset after installation, authentication, recovery, separate-review and data-retention gates pass. Pin a reviewed immutable release reference. Older plugin/server contracts cannot honor this managed flow; mismatches fail safely without generic fallback. Unit tests and manifests alone do not establish customer release readiness.
 

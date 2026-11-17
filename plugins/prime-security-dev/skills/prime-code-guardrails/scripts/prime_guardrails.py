@@ -2,7 +2,8 @@
 """Prime guardrails and managed developer workflows. Python 3.9+, standard library only."""
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Optional
 from datetime import datetime, timezone
 from http.client import HTTPException
 import json
@@ -23,7 +24,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 DEFAULT_ORIGIN = 'https://api.primesec.ai'
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_PAGES = 1000
-RELEASE_VERSION = '1.5.0-alpha.2'
+RELEASE_VERSION = '1.5.0-alpha.3'
 MAX_PLAN_BYTES = 256 * 1024
 PLATFORMS = ('github', 'gitlab', 'bitbucket', 'upload')
 REFERENCE_FIELDS = ('organization', 'repository', 'platform', 'branch', 'commit', 'pull_request', 'filename', 'line_number', 'end_line_number')
@@ -35,7 +36,7 @@ class PrimeError(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
-        self.conflict = False
+        self.result_ids = {}
 
 
 def validate_origin(value, allowed_origin=None, approved_origins=()):
@@ -136,9 +137,10 @@ class Client:
             r'/code-management/repositories/[0-9]+\?detailed_summary_required=true', path)
         if (not path.startswith('/dev/') and not baseline_read) or re.search(r'[\\\s#]', path):
             raise PrimeError('invalid_path', 'Prime requests require a reviewed developer route or baseline read route.')
+        uncertain_write = ' Inspect history before explicitly repeating a write.' if method != 'GET' and path not in ('/dev/guardrails', '/dev/context') else ''
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise PrimeError('timeout', 'Prime request budget exceeded; inspect history before repeating a write.')
+            raise PrimeError('timeout', 'Prime request budget exceeded.' + uncertain_write)
         body = payload if isinstance(payload, bytes) else (json_bytes(payload) if payload is not None else None)
         request = Request(self.origin + path, data=body, method=method, headers={
             'Authorization': 'Bearer ' + self.token, 'Accept': 'application/json',
@@ -153,7 +155,7 @@ class Client:
             status = error.code
             error.close()
             messages = {
-                401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file. Then inspect history before explicitly repeating a write.'),
+                401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file.' + uncertain_write),
                 403: ('permission_denied', 'The credential lacks permission; request the required access before explicit recovery.'),
                 404: ('not_found', 'The requested developer record is absent or inaccessible to this caller.'),
                 409: ('conflict', 'Developer request paused; check fresh settings before explicitly attempting new security work.'),
@@ -164,11 +166,9 @@ class Client:
             code, message = messages.get(status, ('http_error', 'Prime request failed; check connectivity and the reviewed contract.'))
             if 300 <= status < 400:
                 code, message = 'redirect_refused', 'Prime returned a redirect; credentials were not forwarded.'
-            failure = PrimeError(code, message)
-            failure.conflict = status == 409
-            raise failure from None
+            raise PrimeError(code, message) from None
         except (OSError, URLError, HTTPException, ValueError):
-            raise PrimeError('network_error', 'Prime request failed; check connectivity, TLS, and the configured API origin. Inspect history before explicitly repeating a write.') from None
+            raise PrimeError('network_error', 'Prime request failed; check connectivity, TLS, and the configured API origin.' + uncertain_write) from None
         if len(data) > MAX_RESPONSE_BYTES:
             raise PrimeError('response_too_large', 'Prime response exceeded the supported size; no partial context was accepted.')
         if method == 'DELETE' and not data:
@@ -191,8 +191,6 @@ def json_bytes(value):
 
 @dataclass(frozen=True)
 class Settings:
-    account_id: str
-    owner_id: str
     guardrails: bool
     plans: bool
     response: dict
@@ -204,7 +202,7 @@ class Settings:
         if (not isinstance(caller, dict) or any(not isinstance(caller.get(key), str) or not caller[key] for key in ('account_id', 'user_id'))
                 or any(type(data.get(key)) is not bool for key in ('dev_guardrails_enabled', 'security_plan_enabled'))):
             raise PrimeError('invalid_settings', 'Current controls and trusted caller could not be read; continue ordinary coding and retry security work explicitly.')
-        return cls(caller['account_id'], caller['user_id'], data['dev_guardrails_enabled'], data['security_plan_enabled'], data)
+        return cls(data['dev_guardrails_enabled'], data['security_plan_enabled'], data)
 
     def require(self, operation):
         enabled = self.plans if operation == 'plan' else self.guardrails if operation == 'guidance' else self.guardrails or self.plans
@@ -214,7 +212,9 @@ class Settings:
 
 def private_directory(path, repo):
     try:
-        if path.resolve().is_relative_to(Path(repo).resolve()):
+        root = Path(repo).resolve()
+        root = next((parent for parent in (root, *root.parents) if (parent / '.git').exists()), root)
+        if path.resolve().is_relative_to(root):
             raise OSError('Repository artifact')
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         info = path.lstat()
@@ -261,7 +261,7 @@ def durable_write(path, value, replace=False):
             finally:
                 os.close(fd)
     except OSError:
-        raise PrimeError('file_write_failed', 'Cannot durably publish the private artifact; no request was sent from an incomplete artifact.') from None
+        raise PrimeError('file_write_failed', 'Cannot durably publish the private artifact.') from None
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -290,7 +290,7 @@ class DeveloperWorkflow:
         try:
             return self.client.request(method, path, payload)
         except PrimeError as error:
-            if error.conflict:
+            if error.code == 'conflict':
                 try:
                     controls = self.settings()
                     error.args = (str(error) + ' Current guidance: ' + str(controls.guardrails).lower()
@@ -350,9 +350,14 @@ class DeveloperWorkflow:
             raise PrimeError('invalid_plan', 'The plan must be nonempty UTF-8 Markdown.')
         body = self.bounded_payload(dict(payload, markdown=markdown))
         result = self.request('POST', '/dev/plans', body)
-        if type(result.get('id')) is not int or result['id'] <= 0 or not isinstance(result.get('context_snapshot'), dict):
+        if type(result.get('id')) is not int or result['id'] <= 0:
             raise PrimeError('invalid_plan_response', 'Registration was not confirmed; inspect plan history before explicitly registering again.')
-        self.validate_context(result['context_snapshot'], payload['code_references'])
+        try:
+            self.validate_context(result.get('context_snapshot'), payload['code_references'])
+        except PrimeError:
+            error = PrimeError('invalid_plan_snapshot', f"Plan {result['id']} was created, but its snapshot is invalid. Use plan-get --plan-id {result['id']} and inspect plan history before any new registration.")
+            error.result_ids = {'id': result['id']}
+            raise error from None
         return result
 
     def get(self, plan_id):
@@ -490,7 +495,29 @@ def paginate(get, path):
     raise PrimeError('pagination_limit', 'Prime exceeded the page limit; no partial results were accepted.')
 
 
-def baseline_repo_identity(remote):
+@dataclass(frozen=True)
+class ParsedRemote:
+    host: str
+    port: Optional[int]
+    path: str
+
+
+@dataclass(frozen=True)
+class RepositoryScope:
+    organization: str
+    repository: str
+    platform: str
+
+
+@dataclass(frozen=True)
+class CodeReference(RepositoryScope):
+    branch: Optional[str] = None
+    commit: Optional[str] = None
+    pull_request: Optional[int] = None
+    filename: Optional[str] = None
+
+
+def parse_remote(remote: Optional[str]) -> Optional[ParsedRemote]:
     if not isinstance(remote, str) or re.search(r'[\s\\]', remote):
         return None
     if '://' not in remote:
@@ -508,11 +535,15 @@ def baseline_repo_identity(remote):
     path = url.path.strip('/').removesuffix('.git')
     if '/' not in path or any(part in ('', '.', '..') for part in path.split('/')):
         return None
-    # Preserve case on arbitrary providers; false negatives are safer than incorrect context.
-    if host == 'github.com':
-        path = path.lower()
     default_port = {'ssh': 22, 'https': 443, 'http': 80, 'git': 9418}[url.scheme]
-    return (host, port if port != default_port else None, path)
+    return ParsedRemote(host, port if port != default_port else None, path)
+
+
+def baseline_repo_identity(remote: Optional[str]) -> Optional[ParsedRemote]:
+    parsed = parse_remote(remote)
+    if parsed and parsed.host == 'github.com':
+        return ParsedRemote(parsed.host, parsed.port, parsed.path.lower())
+    return parsed
 
 
 def match_repo(repositories, remote):
@@ -566,28 +597,15 @@ def positive_id(value):
     return value
 
 
-def repo_identity(remote):
-    if not isinstance(remote, str) or re.search(r'[\s\\]', remote):
+def repo_identity(remote: Optional[str]) -> Optional[RepositoryScope]:
+    parsed = parse_remote(remote)
+    if parsed is None or parsed.port is not None:
         return None
-    if '://' not in remote:
-        match = re.fullmatch(r'(?:[^/@:]+@)?([^/:]+):(.+)', remote)
-        if not match:
-            return None
-        remote = 'ssh://' + match[1] + '/' + match[2]
-    try:
-        url = urlsplit(remote)
-        if url.scheme not in ('ssh', 'https', 'http', 'git') or url.query or url.fragment:
-            return None
-        platform = {'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket'}.get(url.hostname)
-        if platform is None or url.port not in (None, {'ssh': 22, 'https': 443, 'http': 80, 'git': 9418}[url.scheme]):
-            return None
-    except ValueError:
+    platform = {'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket'}.get(parsed.host)
+    parts = parsed.path.split('/')
+    if platform is None or platform != 'gitlab' and len(parts) != 2 or '%' in parsed.path:
         return None
-    path = url.path.strip('/').removesuffix('.git')
-    parts = path.split('/')
-    if len(parts) < 2 or platform != 'gitlab' and len(parts) != 2 or any(part in ('', '.', '..') or '%' in part for part in parts):
-        return None
-    return {'organization': '/'.join(parts[:-1]), 'repository': parts[-1], 'platform': platform}
+    return RepositoryScope('/'.join(parts[:-1]), parts[-1], platform)
 
 
 def git_remote(directory):
@@ -599,28 +617,26 @@ def git_remote(directory):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
-def repository_scope(args, auto=True):
+def repository_scope(args, auto=True) -> Optional[RepositoryScope]:
     values = (args.organization, args.repository, args.platform)
     if any(value is not None for value in values):
         if not all(isinstance(value, str) and value.strip() and not re.search(r'[\x00-\x1f]', value) for value in values):
             raise PrimeError('invalid_scope', 'Supply canonical --organization, --repository and --platform together.')
-        return dict(zip(('organization', 'repository', 'platform'), values))
+        return RepositoryScope(*values)
     if not auto:
-        return {}
+        return None
     identity = repo_identity(args.remote or git_remote(args.repo))
     if identity is None:
         raise PrimeError('unsupported_remote', 'Supply canonical --organization, --repository and --platform for uploaded, self-hosted or unsupported repositories.')
     return identity
 
 
-def code_scope(args):
-    scope = repository_scope(args)
+def code_scope(args) -> list[CodeReference]:
     revisions = {key: value for key, value in (('branch', args.branch), ('commit', args.commit), ('pull_request', args.pull_request)) if value is not None}
     if any(isinstance(value, str) and not value.strip() for value in revisions.values()):
         raise PrimeError('invalid_scope', 'A revision selector must be nonempty.')
     if args.pull_request is not None:
         positive_id(args.pull_request)
-    scope.update(revisions)
     if len(args.path) > 100:
         raise PrimeError('invalid_scope', 'Scope accepts at most 100 relative repository paths.')
     paths = []
@@ -631,8 +647,9 @@ def code_scope(args):
         path = str(PurePosixPath(value))
         if path == '.':
             raise PrimeError('invalid_scope', 'Each path must identify a file or directory.')
-        paths.append(dict(scope, filename=path))
-    return paths or [scope]
+        paths.append(path)
+    scope = repository_scope(args)
+    return [CodeReference(scope.organization, scope.repository, scope.platform, **revisions, filename=path) for path in (paths or [None])]
 
 
 def main():
@@ -663,10 +680,16 @@ def main():
     parser.add_argument('--offset', type=int, default=0)
     args = parser.parse_args()
     token = None
+    result = {}
     try:
         if args.approve_origin:
             print(json.dumps(approve_origin(args.approve_origin)))
             return 0
+        if args.output:
+            output_path = args.output.absolute()
+            private_directory(output_path.parent, args.repo)
+            if os.path.lexists(output_path):
+                raise PrimeError('file_write_failed', 'The output target already exists; choose a new private artifact path before sending a request.')
         value = os.environ.get('PRIME_API_URL') or DEFAULT_ORIGIN
         try:
             origin = validate_origin(value, args.allow_origin)
@@ -692,9 +715,19 @@ def main():
         elif command == 'settings':
             result = workflow.settings().response
         elif command in ('guidance', 'guardrails', 'context', 'plan-register'):
-            references = code_scope(args)
+            try:
+                scopes = code_scope(args)
+            except PrimeError as error:
+                if error.code != 'unsupported_remote' or command not in ('guidance', 'guardrails'):
+                    raise
+                workflow.settings().require('guidance')
+                result = load_context(client, args.remote or git_remote(args.repo))
+                result['limitations'] = ['Account-wide guidance only; no code-area or revision coverage.']
+                scopes = []
+            references = [{key: value for key, value in asdict(scope).items() if value is not None} for scope in scopes]
             if command in ('guidance', 'guardrails'):
-                result = workflow.guardrails(references)
+                if scopes:
+                    result = workflow.guardrails(references)
             elif command == 'context':
                 result = workflow.context(references, args.intent)
             else:
@@ -707,14 +740,15 @@ def main():
                 if args.base_commit is not None:
                     if not args.base_commit.strip():
                         raise PrimeError('invalid_scope', 'The base commit must be nonempty.')
-                    payload['base_commit_ref'] = dict(repository_scope(args), commit=args.base_commit)
+                    payload['base_commit_ref'] = dict(organization=scopes[0].organization, repository=scopes[0].repository, platform=scopes[0].platform, commit=args.base_commit)
                 result = workflow.register(args.plan_file, payload)
         elif command == 'plan-save-review':
             if args.result_file is None:
                 raise PrimeError('missing_input', 'Saving requires --result-file from the separate reviewer.')
             result = workflow.save_review(positive_id(args.plan_id), args.result_file)
         elif command in ('plan-list', 'pr-review-list'):
-            filters = dict(repository_scope(args, auto=False), owner_id=args.owner_id)
+            scope = repository_scope(args, auto=False)
+            filters = dict(asdict(scope) if scope else {}, owner_id=args.owner_id)
             if command == 'plan-list':
                 filters.update(status=args.status, title=args.title)
                 result = workflow.history(args.limit, args.offset, **filters)
@@ -724,19 +758,27 @@ def main():
             plan_id = positive_id(args.plan_id)
             result = workflow.get(plan_id) if command == 'plan-get' else workflow.delete(plan_id)
         elif command == 'pr-review':
-            result = workflow.pr_review(repository_scope(args), positive_id(args.pull_request))
+            result = workflow.pr_review(asdict(repository_scope(args)), positive_id(args.pull_request))
         else:
             result = workflow.context_outcome(args.context_id, args.issue_id)
         if args.output:
-            output_path = args.output.absolute()
-            private_directory(output_path.parent, args.repo)
             data = json.dumps(result, ensure_ascii=True, indent=2).replace(json.dumps(token)[1:-1], '[REDACTED]')
-            durable_write(output_path, data.encode())
-            result = {'status': result.get('status', 'saved'), 'output_path': str(output_path),
+            try:
+                durable_write(output_path, data.encode())
+            except PrimeError as error:
+                error.result_ids = {key: result[key] for key in ('id', 'context_id', 'saved_at', 'job_id') if key in result}
+                error.args = (str(error) + ' Inspect the confirmed record or history before repeating a write.',)
+                raise
+            snapshot = result.get('context_snapshot') or result
+            policies = snapshot.get('policies', snapshot.get('guardrails'))
+            receipt = {'guardrail_count': len(policies)} if isinstance(policies, list) else {}
+            if isinstance(result.get('repository'), dict):
+                receipt['repository_status'] = result['repository'].get('status')
+            result = {**receipt, 'status': result.get('status', 'saved'), 'output_path': str(output_path),
                       **{key: result[key] for key in ('id', 'context_id', 'saved_at', 'job_id') if key in result}}
         exit_code = 0
     except PrimeError as error:
-        result = {'status': 'error', 'code': error.code, 'message': str(error), 'ordinary_coding': 'available'}
+        result = {'status': 'error', 'code': error.code, 'message': str(error), 'ordinary_coding': 'available', **error.result_ids}
         exit_code = 1
     output = json.dumps(result, ensure_ascii=True)
     if token:

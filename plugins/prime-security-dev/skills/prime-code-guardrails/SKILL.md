@@ -9,30 +9,28 @@ description: Use when implementing features, fixing bugs, refactoring, writing t
 
 ## Select the current mode
 
-Before each meaningful coding step, including continued substantive edits/tests and final diff review, check capabilities. For dev acceptance, `publicF` must identify the verified, user-authorized HTTPS dev front-service origin; pass it explicitly on every invocation:
+Before each meaningful coding step, including continued substantive edits/tests and final diff review, load fresh guidance with the helper. Every helper API invocation reads capabilities itself before canonical scope or plan-file requirements; do not precede it with a standalone capability check. Require an exact boolean `developer_security_enabled`.
 
-```bash
-PRIME_API_URL="$publicF" python3 "<skill-directory>/scripts/prime_guardrails.py" capabilities --allow-origin "$publicF"
-```
+Missing/malformed capabilities or failed capability/core-policy/managed requests pause security work; report the safe error while ordinary coding continues. Never infer a mode from an API error or try generic API/MCP/discovery alternatives.
 
-Require an exact boolean `developer_security_enabled`. Every helper API invocation checks it again before canonical scope or plan-file requirements. Missing/malformed capabilities or failed capability/core-policy/managed requests pause security work; report the safe error while ordinary coding continues. Never infer a mode from an error or try generic API/MCP/discovery alternatives.
+For either mode, reconcile the number of fully read policies with the receipt `guardrail_count`. Read complete policy text in bounded chunks until every string is complete; matching counts alone cannot detect truncated text.
 
 If **false**, load fresh account-wide policies with `guidance` (the default) or `guardrails`. Git, a recognized remote and connected repository are optional. Save all policies privately and read each one completely:
 
 ```bash
 umask 077
 prime_dir=$(mktemp -d "${TMPDIR:-/tmp}/prime-dev.XXXXXX")
-PRIME_API_URL="$publicF" python3 "<skill-directory>/scripts/prime_guardrails.py" guidance --allow-origin "$publicF" --repo "<working-directory>" --output "$prime_dir/guidance.json"
+python3 "<skill-directory>/scripts/prime_guardrails.py" guidance --repo "<working-directory>" --output "$prime_dir/guidance.json"
 ```
 
 The `guardrails` array contains account-wide policy text; it does not establish file/revision coverage. The optional `repository` summary can be loaded, unregistered, unsupported or unavailable without losing valid policies. Disclose that status. Core policy-loading errors stop security work. Apply these policies, report influential titles and delete task-owned artifacts after use. Do not attempt settings, context, plans, PR requests/history, outcomes or other managed commands in this mode. The remaining sections apply only when capabilities are **true**.
 
 ## Enabled mode: current controls and coding guidance
 
-Before each meaningful coding action and immediately before dispatching a separate reviewer, read fresh settings:
+Guidance/context/register/save helper calls read fresh settings themselves; do not precede them with a standalone settings call. Before reusing cached guidance for a later meaningful coding action without another gated helper call, read fresh capabilities and, when enabled, settings. Immediately before dispatching a separate reviewer, read fresh settings:
 
 ```bash
-PRIME_API_URL="$publicF" python3 "<skill-directory>/scripts/prime_guardrails.py" settings --allow-origin "$publicF" --repo "<repository>"
+python3 "<skill-directory>/scripts/prime_guardrails.py" settings --repo "<repository>"
 ```
 
 Read only `dev_guardrails_enabled` and `security_plan_enabled`; `caller.account_id/user_id` come from the authenticated server. Guidance/context require guidance enabled; register/save require plans enabled. Plans work with guidance off using their non-policy snapshot. On guidance disable, discard reusable guidance. Historical snapshots remain history and never become current coding guidance. A settings/auth failure pauses new security work; report its safe error and recovery step while ordinary coding continues. While the managed capability remains enabled, history/detail/deletion stay available without a settings read.
@@ -42,10 +40,12 @@ Load fresh guidance for the requested repository/file/directory. Supported GitHu
 ```bash
 umask 077
 prime_dir=$(mktemp -d "${TMPDIR:-/tmp}/prime-dev.XXXXXX")
-PRIME_API_URL="$publicF" python3 "<skill-directory>/scripts/prime_guardrails.py" guardrails --allow-origin "$publicF" --repo "<repository>" --path src --output "$prime_dir/guidance.json"
+python3 "<skill-directory>/scripts/prime_guardrails.py" guardrails --repo "<repository>" --path src --output "$prime_dir/guidance.json"
 ```
 
-In enabled mode the default command `guidance` uses the same POST. After success, read every full policy and its provenance from the private artifact, using bounded ranges until complete. Valid empty policies differ from failed loading. Report unavailable/truncated sources and coverage limitations. Use `context` with the same scope and `--intent` for relevant stored safeguards, issues and knowledge. This is stored analysis; requested revisions do not establish that uncommitted code or that revision was scanned. Apply current policies and run the task's appropriate tests.
+In enabled mode the default command `guidance` uses the same POST when canonical scope is available. For guidance/guardrails only, an absent or unsupported repository identity instead loads account-wide policies after fresh settings confirm guidance enabled. Explicit scope, path and revision arguments must still be valid. Disclose account-wide guidance and lack of code-area/revision coverage; context and plans still require canonical scope. Capability/settings/auth/API errors, including a scoped 404, never permit this account-wide branch.
+
+After success, read every full policy and its provenance from the private artifact. Confirm that the number of fully read policies equals the receipt `guardrail_count`. Read complete text in bounded byte/character chunks until every policy is complete; a matching count alone cannot detect a truncated long string. Valid empty policies differ from failed loading. Report unavailable/truncated sources and coverage limitations. Use `context` with the same scope and `--intent` for relevant stored safeguards, issues and knowledge. This is stored analysis; requested revisions do not establish that uncommitted code or that revision was scanned. Apply current policies and run the task's appropriate tests.
 
 ## Explicit plan review
 
@@ -62,4 +62,4 @@ On explicit user intent, `pr-review --pull-request <number>` sends the canonical
 
 Report mitigation only when the developer explicitly confirms an issue was addressed. Use `context-outcome --context-id <UUID> --issue-id <positive ID>` from the original context's `kind=code_issue` evidence `source_entity_id`, with 1–20 distinct IDs. This is a developer-reported estimate and does not close CMS findings. Guidance delivery or an advisory review alone is not mitigation.
 
-Managed requests use the public front-service origin and `/dev`. Explicit capability false alone authorizes the reviewed stable GET routes for account-wide guardrails and optional repository metadata. Errors never authorize mode changes, direct dev-service, generic API/MCP or discovery alternatives. Each request sends once. On uncertain writes inspect history first, following the contract. Session hooks, OpenCode and Pi adapters are reminders; separate-reviewer support and automatic Claude plan capture remain independent real-client release gates.
+Managed requests use the public front-service origin and `/dev`. Explicit capability false permits the reviewed account-wide GET routes; enabled guidance without supported identity also uses them only after fresh guidance=true. These reads never establish code-area coverage. Errors never authorize mode changes, direct dev-service, generic API/MCP or discovery alternatives. Each request sends once. On uncertain writes inspect history first, following the contract. Session hooks, OpenCode and Pi adapters are reminders; separate-reviewer support and automatic Claude plan capture remain independent real-client release gates.

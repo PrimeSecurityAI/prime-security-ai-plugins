@@ -172,7 +172,7 @@ class DeveloperWorkflowTests(unittest.TestCase):
 
     def test_direct_canonical_journey_retains_snapshot_and_saved_advisory(self):
         controls = self.workflow.settings()
-        self.assertEqual((controls.account_id, controls.owner_id), ('account', 'owner'))
+        self.assertEqual(controls.response['caller'], dict(account_id='account', user_id='owner'))
         guidance = self.workflow.guardrails([REF])
         self.assertEqual(guidance['policies'][0]['guardrail'], 'Validate account ownership.')
         self.assertEqual(self.workflow.context([REF], 'Refund & authorization')['context_id'], CONTEXT_ID)
@@ -197,7 +197,7 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.assertEqual(calls['PUT', '/dev/plans/11/review'], review())
         self.assertEqual(calls['POST', '/dev/pr-reviews'], {'pr_ref': dict(REPO, pull_request=42)})
         self.assertEqual(calls['POST', '/dev/contexts/' + CONTEXT_ID + '/outcomes'], {'issue_ids': [42]})
-        self.assertTrue(all(path.startswith('/dev/') and headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.2'
+        self.assertTrue(all(path.startswith('/dev/') and headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.3'
                             for _, path, _, _, headers in self.boundary.calls))
 
     def test_controls_are_independent_and_history_bypasses_settings(self):

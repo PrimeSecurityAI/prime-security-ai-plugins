@@ -2,7 +2,8 @@
 """Prime guardrails and managed developer workflows. Python 3.9+, standard library only."""
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
+import functools
 from typing import Optional
 from datetime import datetime, timezone
 from http.client import HTTPException
@@ -27,16 +28,26 @@ MAX_PAGES = 1000
 RELEASE_VERSION = '1.5.0-alpha.3'
 MAX_PLAN_BYTES = 256 * 1024
 PLATFORMS = ('github', 'gitlab', 'bitbucket', 'upload')
+RESULT_ID_KEYS = ('id', 'context_id', 'saved_at', 'job_id')
+GUIDANCE_COMMANDS = ('guidance', 'guardrails')
 REFERENCE_FIELDS = ('organization', 'repository', 'platform', 'branch', 'commit', 'pull_request', 'filename', 'line_number', 'end_line_number')
 
 
 class PrimeError(Exception):
     """Only static, credential-free messages cross the CLI boundary."""
 
-    def __init__(self, code, message):
+    def __init__(self, code, message, **result_ids):
         super().__init__(message)
         self.code = code
-        self.result_ids = {}
+        self.result_ids = result_ids
+
+
+def owner_only(info):
+    return os.name != 'posix' or info.st_uid == os.getuid() and not info.st_mode & 0o077
+
+
+def redact(text, token):
+    return text.replace(json.dumps(token)[1:-1], '[REDACTED]') if token else text
 
 
 def validate_origin(value, allowed_origin=None, approved_origins=()):
@@ -69,7 +80,7 @@ def load_approved_origins():
         fd = os.open(approval_file(), os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
         with os.fdopen(fd, 'r', encoding='utf-8') as stream:
             info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+            if not stat.S_ISREG(info.st_mode) or not owner_only(info):
                 raise ValueError('Unsafe approval file')
             origins = json.loads(stream.read(65537))
         if not isinstance(origins, list) or not all(isinstance(item, str) for item in origins):
@@ -88,7 +99,7 @@ def approve_origin(value):
     try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         info = path.parent.lstat()
-        if not stat.S_ISDIR(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+        if not stat.S_ISDIR(info.st_mode) or not owner_only(info):
             raise OSError('Unsafe configuration directory')
     except OSError:
         raise PrimeError('invalid_approval_file', 'The Prime configuration directory must be private and owned by the current user.') from None
@@ -107,7 +118,7 @@ def resolve_token():
                 info = os.fstat(stream.fileno())
                 if not stat.S_ISREG(info.st_mode):
                     raise PrimeError('unsafe_token_file', 'The Prime token file must be a regular file.')
-                if os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077):
+                if not owner_only(info):
                     raise PrimeError('unsafe_token_file', 'Restrict the Prime token file to its owner (chmod 600).')
                 token = stream.read(16385).removesuffix('\n').removesuffix('\r')
         except FileNotFoundError:
@@ -131,13 +142,13 @@ class Client:
         self.opener = opener or build_opener(NoRedirect())
         self.deadline = time.monotonic() + 120
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, idempotent=False):
         baseline_read = method == 'GET' and re.fullmatch(
             r'/(?:guardrails|code-management/repositories)\?limit=100&offset=[0-9]+|'
             r'/code-management/repositories/[0-9]+\?detailed_summary_required=true', path)
         if (not path.startswith('/dev/') and not baseline_read) or re.search(r'[\\\s#]', path):
             raise PrimeError('invalid_path', 'Prime requests require a reviewed developer route or baseline read route.')
-        uncertain_write = ' Inspect history before explicitly repeating a write.' if method != 'GET' and path not in ('/dev/guardrails', '/dev/context') else ''
+        uncertain_write = '' if method == 'GET' or idempotent else ' Inspect history before explicitly repeating a write.'
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise PrimeError('timeout', 'Prime request budget exceeded.' + uncertain_write)
@@ -205,7 +216,7 @@ class Settings:
         return cls(data['dev_guardrails_enabled'], data['security_plan_enabled'], data)
 
     def require(self, operation):
-        enabled = self.plans if operation == 'plan' else self.guardrails if operation == 'guidance' else self.guardrails or self.plans
+        enabled = {'plan': self.plans, 'guidance': self.guardrails, 'outcome': self.guardrails or self.plans}[operation]
         if not enabled:
             raise PrimeError('feature_disabled', 'This security feature is disabled. Discard reusable guidance when guardrails are off; ordinary coding and history/deletion remain available.')
 
@@ -218,7 +229,7 @@ def private_directory(path, repo):
             raise OSError('Repository artifact')
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or (os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+        if not stat.S_ISDIR(info.st_mode) or not owner_only(info):
             raise OSError('Unsafe directory')
     except OSError:
         raise PrimeError('unsafe_artifact_directory', 'Developer artifacts require a private owner-only directory outside the repository.') from None
@@ -232,7 +243,7 @@ def read_bytes(path, limit, private=False):
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, 'rb') as stream:
             info = os.fstat(stream.fileno())
-            if not stat.S_ISREG(info.st_mode) or (private and os.name == 'posix' and (info.st_uid != os.getuid() or info.st_mode & 0o077)):
+            if not stat.S_ISREG(info.st_mode) or (private and not owner_only(info)):
                 raise OSError('Unsafe file')
             value = stream.read(limit + 1)
         if len(value) > limit:
@@ -286,36 +297,35 @@ class DeveloperWorkflow:
     def settings(self):
         return Settings.read(self.client)
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, idempotent=False):
         try:
-            return self.client.request(method, path, payload)
+            return self.client.request(method, path, payload, idempotent)
         except PrimeError as error:
-            if error.code == 'conflict':
-                try:
-                    controls = self.settings()
-                    error.args = (str(error) + ' Current guidance: ' + str(controls.guardrails).lower()
-                                  + '; plans: ' + str(controls.plans).lower() + '.',)
-                except PrimeError:
-                    pass
-            raise
+            if error.code != 'conflict':
+                raise
+            try:
+                controls = self.settings()
+            except PrimeError:
+                raise error from None
+            raise PrimeError('conflict', f'{error} Current guidance: {str(controls.guardrails).lower()}; plans: {str(controls.plans).lower()}.') from None
 
     def guardrails(self, code_references):
         self.settings().require('guidance')
-        return self.validate_context(self.request('POST', '/dev/guardrails', {'code_references': code_references}), code_references, True)
+        return self.validate_context(self.request('POST', '/dev/guardrails', {'code_references': code_references}, True), code_references, True)
 
     def context(self, code_references, intent=''):
         if not isinstance(intent, str) or len(intent) > 500:
             raise PrimeError('invalid_input', 'Context intent is limited to 500 characters.')
         self.settings().require('guidance')
-        return self.validate_context(self.request('POST', '/dev/context', {'code_references': code_references, 'intent': intent}), code_references, True)
+        return self.validate_context(self.request('POST', '/dev/context', {'code_references': code_references, 'intent': intent}, True), code_references, True)
 
-    def validate_context(self, context, code_references, guards=None):
+    def validate_context(self, context, code_references, require_guards=False):
         try:
             UUID(context['context_id'])
             references = context['code_references']
             included = context['guardrails_included']
             policies, evidence = context['policies'], context['evidence']
-            valid = (type(included) is bool and (guards is None or included is guards)
+            valid = (type(included) is bool and (included or not require_guards)
                      and len(json_bytes(context)) <= 1024 * 1024
                      and isinstance(references, list) and all(isinstance(ref, dict) for ref in references)
                      and [reference_key(ref) for ref in references] == [reference_key(ref) for ref in code_references]
@@ -355,9 +365,7 @@ class DeveloperWorkflow:
         try:
             self.validate_context(result.get('context_snapshot'), payload['code_references'])
         except PrimeError:
-            error = PrimeError('invalid_plan_snapshot', f"Plan {result['id']} was created, but its snapshot is invalid. Use plan-get --plan-id {result['id']} and inspect plan history before any new registration.")
-            error.result_ids = {'id': result['id']}
-            raise error from None
+            raise PrimeError('invalid_plan_snapshot', f"Plan {result['id']} was created, but its snapshot is invalid. Use plan-get --plan-id {result['id']} and inspect plan history before any new registration.", id=result['id']) from None
         return result
 
     def get(self, plan_id):
@@ -384,13 +392,12 @@ class DeveloperWorkflow:
                      and all(isinstance(item, str) for item in result.get('limitations', [])))
             if not valid or saved and not aware_timestamp(result.get('saved_at')):
                 raise ValueError('Invalid review')
-            normalized = dict(result, findings=result.get('findings', []), limitations=result.get('limitations', []), failure_code=result.get('failure_code'))
+            normalized = dict(result, findings=[], limitations=result.get('limitations', []), failure_code=result.get('failure_code'))
             if (result['outcome'] == 'failed' and result.get('failure_code') not in ('reviewer_unavailable', 'reviewer_failed', 'review_cancelled')
                     or result['outcome'] == 'recorded' and result.get('failure_code') is not None):
                 raise ValueError('Invalid outcome')
             evidence = {item['id']: item for item in snapshot.get('evidence', [])}
             policy_ids = {str(item['external_id']) for item in snapshot.get('policies', []) if item.get('external_id') is not None}
-            normalized['findings'] = []
             for finding in result.get('findings', []):
                 if (not isinstance(finding, dict) or set(finding) - {'severity', 'explanation', 'suggested_action', 'evidence_ids', 'code_references'}
                         or finding.get('severity') not in ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO')
@@ -516,6 +523,9 @@ class CodeReference(RepositoryScope):
     pull_request: Optional[int] = None
     filename: Optional[str] = None
 
+    def payload(self):
+        return {key: value for key, value in asdict(self).items() if value is not None}
+
 
 def parse_remote(remote: Optional[str]) -> Optional[ParsedRemote]:
     if not isinstance(remote, str) or re.search(r'[\s\\]', remote):
@@ -542,7 +552,7 @@ def parse_remote(remote: Optional[str]) -> Optional[ParsedRemote]:
 def baseline_repo_identity(remote: Optional[str]) -> Optional[ParsedRemote]:
     parsed = parse_remote(remote)
     if parsed and parsed.host == 'github.com':
-        return ParsedRemote(parsed.host, parsed.port, parsed.path.lower())
+        return replace(parsed, path=parsed.path.lower())
     return parsed
 
 
@@ -602,12 +612,13 @@ def repo_identity(remote: Optional[str]) -> Optional[RepositoryScope]:
     if parsed is None or parsed.port is not None:
         return None
     platform = {'github.com': 'github', 'gitlab.com': 'gitlab', 'bitbucket.org': 'bitbucket'}.get(parsed.host)
-    parts = parsed.path.split('/')
-    if platform is None or platform != 'gitlab' and len(parts) != 2 or '%' in parsed.path:
+    organization, _, repository = parsed.path.rpartition('/')
+    if platform is None or '%' in parsed.path or platform != 'gitlab' and '/' in organization:
         return None
-    return RepositoryScope('/'.join(parts[:-1]), parts[-1], platform)
+    return RepositoryScope(organization, repository, platform)
 
 
+@functools.lru_cache(maxsize=None)
 def git_remote(directory):
     try:
         result = subprocess.run(['git', '-C', str(directory), 'remote', 'get-url', 'origin'],
@@ -680,7 +691,6 @@ def main():
     parser.add_argument('--offset', type=int, default=0)
     args = parser.parse_args()
     token = None
-    result = {}
     try:
         if args.approve_origin:
             print(json.dumps(approve_origin(args.approve_origin)))
@@ -707,27 +717,26 @@ def main():
         if command == 'capabilities':
             result = capabilities
         elif not capabilities['developer_security_enabled']:
-            if command not in ('guidance', 'guardrails'):
+            if command not in GUIDANCE_COMMANDS:
                 raise PrimeError('feature_disabled', 'Managed developer security is unavailable for this account; use account-wide guidance or continue ordinary coding.')
             result = load_context(client, args.remote or git_remote(args.repo))
             result['api_origin'] = origin
             result['repository_directory'] = str(Path(args.repo).resolve())
         elif command == 'settings':
             result = workflow.settings().response
-        elif command in ('guidance', 'guardrails', 'context', 'plan-register'):
+        elif command in GUIDANCE_COMMANDS + ('context', 'plan-register'):
             try:
                 scopes = code_scope(args)
             except PrimeError as error:
-                if error.code != 'unsupported_remote' or command not in ('guidance', 'guardrails'):
+                if error.code != 'unsupported_remote' or command not in GUIDANCE_COMMANDS:
                     raise
                 workflow.settings().require('guidance')
-                result = load_context(client, args.remote or git_remote(args.repo))
-                result['limitations'] = ['Account-wide guidance only; no code-area or revision coverage.']
-                scopes = []
-            references = [{key: value for key, value in asdict(scope).items() if value is not None} for scope in scopes]
-            if command in ('guidance', 'guardrails'):
-                if scopes:
-                    result = workflow.guardrails(references)
+                scopes = None
+            references = [scope.payload() for scope in scopes or []]
+            if scopes is None:
+                result = dict(load_context(client, args.remote or git_remote(args.repo)), limitations=['Account-wide guidance only; no code-area or revision coverage.'])
+            elif command in GUIDANCE_COMMANDS:
+                result = workflow.guardrails(references)
             elif command == 'context':
                 result = workflow.context(references, args.intent)
             else:
@@ -755,35 +764,28 @@ def main():
             else:
                 result = workflow.pr_history(args.limit, args.offset, **filters)
         elif command in ('plan-get', 'plan-delete'):
-            plan_id = positive_id(args.plan_id)
-            result = workflow.get(plan_id) if command == 'plan-get' else workflow.delete(plan_id)
+            result = workflow.get(args.plan_id) if command == 'plan-get' else workflow.delete(args.plan_id)
         elif command == 'pr-review':
             result = workflow.pr_review(asdict(repository_scope(args)), positive_id(args.pull_request))
         else:
             result = workflow.context_outcome(args.context_id, args.issue_id)
         if args.output:
-            data = json.dumps(result, ensure_ascii=True, indent=2).replace(json.dumps(token)[1:-1], '[REDACTED]')
+            ids = {key: result[key] for key in RESULT_ID_KEYS if key in result}
             try:
-                durable_write(output_path, data.encode())
+                durable_write(output_path, redact(json.dumps(result, ensure_ascii=True, indent=2), token).encode())
             except PrimeError as error:
-                error.result_ids = {key: result[key] for key in ('id', 'context_id', 'saved_at', 'job_id') if key in result}
-                error.args = (str(error) + ' Inspect the confirmed record or history before repeating a write.',)
-                raise
+                raise PrimeError(error.code, f'{error} Inspect the confirmed record or history before repeating a write.', **ids) from None
             snapshot = result.get('context_snapshot') or result
             policies = snapshot.get('policies', snapshot.get('guardrails'))
             receipt = {'guardrail_count': len(policies)} if isinstance(policies, list) else {}
             if isinstance(result.get('repository'), dict):
                 receipt['repository_status'] = result['repository'].get('status')
-            result = {**receipt, 'status': result.get('status', 'saved'), 'output_path': str(output_path),
-                      **{key: result[key] for key in ('id', 'context_id', 'saved_at', 'job_id') if key in result}}
+            result = {**receipt, 'status': result.get('status', 'saved'), 'output_path': str(output_path), **ids}
         exit_code = 0
     except PrimeError as error:
         result = {'status': 'error', 'code': error.code, 'message': str(error), 'ordinary_coding': 'available', **error.result_ids}
         exit_code = 1
-    output = json.dumps(result, ensure_ascii=True)
-    if token:
-        output = output.replace(json.dumps(token)[1:-1], '[REDACTED]')
-    print(output)
+    print(redact(json.dumps(result, ensure_ascii=True), token))
     return exit_code
 
 

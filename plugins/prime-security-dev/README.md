@@ -1,6 +1,6 @@
 # prime-security-dev
 
-Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The proposed unpublished `1.5.0-alpha.1` checks account capabilities on each invocation. Explicit false preserves stable account-wide guardrails with optional repository summary and no Git/connected-repository requirement; true uses account-controlled `/dev` guidance, canonical scoped guidance/context, saved advisory plan reviews, explicit PR requests and mitigation reporting. The helper requires Python 3.9+. Dedicated reviewer support must pass a separate real-client release gate for each advertised host; automatic Claude plan capture remains disabled.
+Load your organization's security guardrails before coding in **Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, or Pi**. The proposed unpublished `1.5.0-alpha.2` checks account capabilities on each invocation. Explicit false preserves stable account-wide guardrails with optional repository summary and no Git/connected-repository requirement; true uses account-controlled `/dev` guidance, canonical scoped guidance/context, saved advisory plan reviews, explicit PR requests and mitigation reporting. The helper requires Python 3.9+. Dedicated reviewer support must pass a separate real-client release gate for each advertised host; automatic Claude plan capture remains disabled.
 
 This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
 
@@ -177,7 +177,7 @@ MIT
 
 ## Managed alpha compatibility
 
-`1.5.0-alpha.1` remains proposed and unpublished. It requires GET `/dev/capabilities` returning an exact boolean `developer_security_enabled`. False selects the existing stable policy loader, including optional repository metadata; true requires the current canonical `/dev` backend. Dev guardrails defaults on and Security plan defaults off; their persisted booleans are independent. Older servers or capability failures stop security work. Managed API/settings failures never trigger stable mode.
+`1.5.0-alpha.2` remains proposed and unpublished. It requires GET `/dev/capabilities` returning an exact boolean `developer_security_enabled`. False selects the existing stable policy loader, including optional repository metadata; true requires the current canonical `/dev` backend. Dev guardrails defaults on and Security plan defaults off; their persisted booleans are independent. Older servers or capability failures stop security work. Managed API/settings failures never trigger stable mode.
 
 The direct plan sequence is register → GET normalized Markdown/snapshot → one actual separate host reviewer → save advisory with server `saved_at` → requested history/delete. Every registration creates another row and fresh context; review PUT replaces the result. After uncertain writes inspect history before explicitly repeating them. Guidance can change while a registered plan remains reviewable with plans enabled. See [the workflow contract](skills/prime-code-guardrails/references/api-contract.md) for exact commands, reviewer JSON, PR acceptance, outcomes and recovery.
 

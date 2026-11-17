@@ -23,7 +23,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 DEFAULT_ORIGIN = 'https://api.primesec.ai'
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_PAGES = 1000
-RELEASE_VERSION = '1.5.0-alpha.1'
+RELEASE_VERSION = '1.5.0-alpha.2'
 MAX_PLAN_BYTES = 256 * 1024
 PLATFORMS = ('github', 'gitlab', 'bitbucket', 'upload')
 REFERENCE_FIELDS = ('organization', 'repository', 'platform', 'branch', 'commit', 'pull_request', 'filename', 'line_number', 'end_line_number')

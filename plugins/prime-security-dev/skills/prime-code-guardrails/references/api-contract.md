@@ -1,6 +1,6 @@
 # Developer workflow contract
 
-Use the bundled Python 3.9+ helper against the verified public front-service origin. Every API invocation starts with GET `/dev/capabilities` before canonical scope or plan-file requirements. Only an exact boolean `developer_security_enabled` selects a mode. Missing/malformed/auth-failed capabilities stop security work; errors never authorize another mode or direct dev-service/generic API/MCP/discovery alternatives. The helper never invokes a model. This unpublished alpha retains version `1.5.0-alpha.1` pending real-client validation.
+Use the bundled Python 3.9+ helper against the verified public front-service origin. Every API invocation starts with GET `/dev/capabilities` before canonical scope or plan-file requirements. Only an exact boolean `developer_security_enabled` selects a mode. Missing/malformed/auth-failed capabilities stop security work; errors never authorize another mode or direct dev-service/generic API/MCP/discovery alternatives. The helper never invokes a model. This unpublished alpha uses version `1.5.0-alpha.2` pending real-client validation.
 
 ## Capability selection and stable guidance
 

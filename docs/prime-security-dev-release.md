@@ -1,6 +1,6 @@
 # Prime Security Dev release checklist
 
-Proposed unpublished version: **1.5.0-alpha.1**. Record immutable commit, actual client/model versions, OS and verified dev API origin with results. Operator behavior/version stays unchanged. Local checks cover synthetic helper behavior and reminder packaging; the current canonical alpha has no completed real-client certification.
+Proposed unpublished version: **1.5.0-alpha.2**. Record immutable commit, actual client/model versions, OS and verified dev API origin with results. Operator behavior/version stays unchanged. Local checks cover synthetic helper behavior and reminder packaging; the current canonical alpha has no completed real-client certification.
 
 ## Local implementation checks
 
@@ -29,6 +29,10 @@ Root owns deployment, dev credentials/browser authorization, installation, actua
 9. Validate update/uninstall/restart without duplicates. Remove only task-owned output/review/guidance files while preserving original plans. Legacy receipt files require deliberate user cleanup; shared credentials and approvals persist.
 
 ## Publication and rollback
+
+Deploy the rollout backend exposing authenticated GET `/dev/capabilities` before distributing this plugin update. Missing or incompatible capabilities stop security work, including stable guidance; older backends do not support this rollout.
+
+The dev plugin version advances to `1.5.0-alpha.2` because native Claude updates can report an unchanged `1.5.0-alpha.1` as up to date while retaining the previous cached helper and skill. A version increment is required for this native update path. Update through the client and verify its installed version and files; do not manually modify plugin caches. Historical `1.5.0-alpha.1` acceptance below remains evidence for that earlier installation only.
 
 Publish only the proven client subset after installation, authentication, recovery, separate-review and data-retention gates pass. Pin a reviewed immutable release reference. Older plugin/server contracts cannot honor this managed flow; mismatches fail safely without generic fallback. Unit tests and manifests alone do not establish customer release readiness.
 

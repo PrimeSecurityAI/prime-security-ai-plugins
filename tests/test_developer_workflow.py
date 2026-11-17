@@ -197,7 +197,7 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.assertEqual(calls['PUT', '/dev/plans/11/review'], review())
         self.assertEqual(calls['POST', '/dev/pr-reviews'], {'pr_ref': dict(REPO, pull_request=42)})
         self.assertEqual(calls['POST', '/dev/contexts/' + CONTEXT_ID + '/outcomes'], {'issue_ids': [42]})
-        self.assertTrue(all(path.startswith('/dev/') and headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.1'
+        self.assertTrue(all(path.startswith('/dev/') and headers['User-agent'] == 'prime-security-dev/1.5.0-alpha.2'
                             for _, path, _, _, headers in self.boundary.calls))
 
     def test_controls_are_independent_and_history_bypasses_settings(self):

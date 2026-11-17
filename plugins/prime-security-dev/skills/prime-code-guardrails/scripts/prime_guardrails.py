@@ -177,6 +177,8 @@ class Client:
             code, message = messages.get(status, ('http_error', 'Prime request failed; check connectivity and the reviewed contract.'))
             if 300 <= status < 400:
                 code, message = 'redirect_refused', 'Prime returned a redirect; credentials were not forwarded.'
+            if 500 <= status < 600:
+                message += uncertain_write
             raise PrimeError(code, message) from None
         except (OSError, URLError, HTTPException, ValueError):
             raise PrimeError('network_error', 'Prime request failed; check connectivity, TLS, and the configured API origin.' + uncertain_write) from None

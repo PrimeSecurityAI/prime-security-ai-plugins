@@ -227,14 +227,19 @@ class GuardrailsTests(unittest.TestCase):
         self.assertIsNone(handler.redirect_request(None, None, 302, 'Found', {}, 'https://other.example'))
 
     def test_transport_sanitizes_http_errors(self):
-        opener = type('FailingOpener', (), {'open': lambda *args, **kwargs: (_ for _ in ()).throw(
-            HTTPError('https://api.primesec.ai', 401, 'secret-token', {}, io.BytesIO(b'secret-token')))})()
-        client = self.api.Client('https://api.primesec.ai', 'secret-token', opener=opener)
-        with self.assertRaises(self.api.PrimeError) as caught:
-            client.get('/dev/guardrails')
-        self.assertNotIn('secret-token', str(caught.exception))
-        self.assertEqual(caught.exception.code, 'authentication_failed')
-        self.assertNotIn('history', str(caught.exception))
+        for status, code in ((401, 'authentication_failed'), (502, 'http_error'), (503, 'unavailable'), (504, 'http_error')):
+            for method, path, idempotent, warning in (('GET', '/dev/settings', False, False),
+                                                     ('POST', '/dev/plans', False, True),
+                                                     ('POST', '/dev/guardrails', True, False)):
+                with self.subTest(status=status, method=method, path=path):
+                    opener = type('FailingOpener', (), {'open': lambda *args, **kwargs: (_ for _ in ()).throw(
+                        HTTPError('https://api.primesec.ai', status, 'secret-token', {}, io.BytesIO(b'secret-token')))})()
+                    client = self.api.Client('https://api.primesec.ai', 'secret-token', opener=opener)
+                    with self.assertRaises(self.api.PrimeError) as caught:
+                        client.request(method, path, idempotent=idempotent)
+                    self.assertNotIn('secret-token', str(caught.exception))
+                    self.assertEqual(caught.exception.code, code)
+                    self.assertEqual('Inspect history before explicitly repeating a write.' in str(caught.exception), warning)
 
     def test_malformed_http_and_truncated_body_are_safe_errors(self):
         for error in [BadStatusLine('Bearer secret-token'), IncompleteRead(b'secret-token', 100)]:

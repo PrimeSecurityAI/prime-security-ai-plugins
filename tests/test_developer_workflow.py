@@ -53,6 +53,10 @@ class Response(io.BytesIO):
 class Boundary:
     def __init__(self):
         self.calls = []
+        self.capabilities = {'developer_security_enabled': True}
+        self.capability_error = None
+        self.stable_error = None
+        self.summary_error = False
         self.controls = settings()
         self.rows = {}
         self.pr_receipts = []
@@ -68,6 +72,23 @@ class Boundary:
         method, path = request.get_method(), url.path
         payload = json.loads(request.data) if request.data is not None else None
         self.calls.append((method, path, parse_qs(url.query), json.loads(request.data) if request.data is not None else None, request.headers))
+        if path == '/dev/capabilities':
+            if self.capability_error:
+                raise HTTPError(request.full_url, self.capability_error, TOKEN, {}, io.BytesIO(TOKEN.encode()))
+            return Response(self.capabilities)
+        if path in ('/guardrails', '/code-management/repositories'):
+            if self.stable_error:
+                raise HTTPError(request.full_url, self.stable_error, TOKEN, {}, io.BytesIO(TOKEN.encode()))
+            offset = int(parse_qs(url.query)['offset'][0])
+            rows = ([dict(guardrail_title='Ownership', guardrail='Validate account ownership.'),
+                     dict(guardrail_title='Input', guardrail='Validate incoming data.')]
+                    if path == '/guardrails' else [dict(id=42, repo_url='https://gitlab.com/Example/Group/App')])
+            page = rows[offset:offset + 1]
+            return Response(dict(results=page, size=len(page), limit=1, offset=offset, total=len(rows), has_next=offset + len(page) < len(rows)))
+        if path == '/code-management/repositories/42':
+            if self.summary_error:
+                raise HTTPError(request.full_url, 503, TOKEN, {}, io.BytesIO(TOKEN.encode()))
+            return Response(dict(analysis=dict(concise_summary='Example application', detailed_summary='Stored repository analysis.')))
         if path == '/dev/settings':
             if self.fail_settings:
                 raise HTTPError(request.full_url, 503, TOKEN, {}, io.BytesIO(TOKEN.encode()))

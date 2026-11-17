@@ -1,8 +1,16 @@
 # Developer workflow contract
 
-Use the bundled Python 3.9+ helper against the verified public front-service origin. All feature requests use `/dev`; there is no direct dev-service, generic API/MCP or resolver fallback. The helper never invokes a model. This unpublished alpha retains version `1.5.0-alpha.1` pending real-client validation.
+Use the bundled Python 3.9+ helper against the verified public front-service origin. Every API invocation starts with GET `/dev/capabilities` before canonical scope or plan-file requirements. Only an exact boolean `developer_security_enabled` selects a mode. Missing/malformed/auth-failed capabilities stop security work; errors never authorize another mode or direct dev-service/generic API/MCP/discovery alternatives. The helper never invokes a model. This unpublished alpha retains version `1.5.0-alpha.1` pending real-client validation.
 
-## Invocation and canonical scope
+## Capability selection and stable guidance
+
+`capabilities` exposes the server response. Explicit false permits only `guidance` (default) and `guardrails`; settings, context, plans (including history/deletion), PR operations/history and outcomes return `feature_disabled` before scope or plan inputs are required. Explicit true uses the managed contract below, including fresh settings for gated work. The local `--approve-origin` setup action saves trust without an API call.
+
+Stable guidance reads every page of GET `/guardrails?limit=100&offset=...`, validates full policy text and returns `{status,fetched_at,guardrails,repository,api_origin,repository_directory}`. Git or a recognized/connected repository is not required. `--repo` only provides an optional origin remote; `--remote` can override it. Canonical scope/path/revision flags do not narrow account-wide policies. Optional metadata uses only GET `/code-management/repositories?limit=100&offset=...` and GET `/code-management/repositories/{id}?detailed_summary_required=true`. No other generic route or mutation is allowed. Missing/unmatched remotes produce summary status; metadata failures produce `repository.status=unavailable` without discarding valid policies. Core guardrail-loading failures stop. This is explicit flag-off compatibility, never recovery after an enabled-flow error.
+
+Use the same transport, credential precedence, approved origins and private `--output` artifacts in both modes. Empty policy arrays are valid; failed or partial loading is not. Treat stored repository summaries as optional context, never source/revision verification.
+
+## Enabled mode: invocation and canonical scope
 
 For every example, `publicF` is the already verified and authorized HTTPS dev origin. Keep the explicit origin in the environment that launches the host too; bundled MCP OAuth and helper PAT authentication are separate.
 
@@ -20,6 +28,7 @@ List commands do not infer local repository filters. Omit all repository fields 
 
 | Command | Input / route |
 |---|---|
+| `capabilities` | GET `/dev/capabilities`, no scope required |
 | `settings` | GET `/dev/settings` |
 | `guidance` (default), `guardrails` | Scope → POST `/dev/guardrails` `{code_references}` |
 | `context` | Scope, `--intent` (default empty, max 500 chars) → POST `/dev/context` |
@@ -36,7 +45,7 @@ Settings mutation, usage/activity administration and account purge belong to ope
 
 ## Settings, context and registration
 
-Read current `dev_guardrails_enabled`, `security_plan_enabled` and trusted `caller.account_id/user_id`. Guidance/context require guidance; register/save require plans. Plans enabled with guidance disabled use a non-policy snapshot. History/get/delete/PR history work directly when both switches are off or settings are unavailable. PR creation reads settings but neither switch blocks it. Outcome prechecks at least one enabled capability; the server enforces original-context ownership and originating capability.
+Read current `dev_guardrails_enabled`, `security_plan_enabled` and trusted `caller.account_id/user_id`. Guidance/context require guidance; register/save require plans. Plans enabled with guidance disabled use a non-policy snapshot. While the managed capability is enabled, history/get/delete/PR history work directly when both per-account switches are off or settings are unavailable. PR creation requires the managed capability and reads settings, but neither per-account switch blocks it. Outcome prechecks at least one enabled capability; the server enforces original-context ownership and originating capability.
 
 Example scoped registration body (client/version must describe the actual host):
 
@@ -96,6 +105,6 @@ Outcome reporting uses numeric IDs from the original context's `kind=code_issue`
 
 Each operation sends once. After uncertain registration, inspect `plan-list`/`plan-get` before explicitly registering again: every successful POST creates another row and a fresh context. After uncertain review save, GET the plan and inspect `review_result` before an explicit repeated PUT, which replaces the result. A deletion is a direct DELETE; uncertain deletion requires checking history and an explicit user decision to retry.
 
-HTTP 409 pauses the attempted operation and refreshes settings only to explain current switch state. There is no automatic replay or guidance-setting-equality rule. Saving a registered snapshot is allowed when plans remain enabled even if guidance changed. A 401 requires terminal credential renewal; an expired environment PAT overrides the renewed file. A 403 requires access. Settings/auth/network failures pause new security work while ordinary coding and authorized history/deletion remain available.
+HTTP 409 pauses the attempted operation and refreshes settings only to explain current switch state. There is no automatic replay or guidance-setting-equality rule. Saving a registered snapshot is allowed when plans remain enabled even if guidance changed. A 401 requires terminal credential renewal; an expired environment PAT overrides the renewed file. A 403 requires access. Settings failures pause new security work while ordinary coding continues; authorized history/deletion remain available only after successful enabled-capability negotiation. Capability/auth/network errors never select stable mode.
 
 Delete task-owned output, guidance and review artifacts deliberately; preserve original user plans. Legacy files under `${XDG_STATE_HOME:-$HOME/.local/state}/prime-security/developer-receipts` are no longer read, scanned, replayed, migrated or deleted by the helper. Inspect and explicitly remove only old task-owned files you no longer need. Uninstall preserves these artifacts, shared credentials and approved origins. Server history requires authorized deletion; backup retention is separate.

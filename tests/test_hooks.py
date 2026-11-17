@@ -25,6 +25,8 @@ class HookTests(unittest.TestCase):
     def test_reminder_requires_current_settings_before_meaningful_action(self):
         result = self.invoke({'hook_event_name': 'SessionStart'})
         context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
+        self.assertIn('capabilities', context)
+        self.assertIn('account-wide', context)
         self.assertIn('fresh settings', context)
         self.assertIn('ordinary coding', context)
 

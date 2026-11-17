@@ -70,17 +70,20 @@ class GuardrailsTests(unittest.TestCase):
         self.assertIsNone(normalize('https://user:password@private.example/org/repo'))
         self.assertIsNone(normalize('/local/repo'))
 
+    def invoke(self, *flags, boundary=None):
+        boundary = boundary or Boundary()
+        with patch.object(self.api, 'build_opener', return_value=boundary), \
+             patch.dict(os.environ, {'PRIME_PAT_TOKEN': 'synthetic-secret', 'PRIME_API_URL': ''}), \
+             patch.object(sys, 'argv', [str(SCRIPT)] + list(flags)), \
+             patch('sys.stdout', new_callable=io.StringIO) as stdout:
+            status = self.api.main()
+        return status, json.loads(stdout.getvalue()), boundary.calls
+
     def test_canonical_cli_paths_revisions_filters_and_default_branch(self):
-        def invoke(*flags):
-            boundary = Boundary()
-            with patch.object(self.api, 'build_opener', return_value=boundary), \
-                 patch.dict(os.environ, {'PRIME_PAT_TOKEN': 'synthetic-secret', 'PRIME_API_URL': ''}), \
-                 patch.object(sys, 'argv', [str(SCRIPT)] + list(flags)), \
-                 patch('sys.stdout', new_callable=io.StringIO) as stdout:
-                status = self.api.main()
-            return status, json.loads(stdout.getvalue()), boundary.calls
+        invoke = self.invoke
         status, result, calls = invoke('--remote', 'git@github.com:Acme/App.git', '--path', './src//api.py')
         self.assertEqual(status, 0)
+        self.assertEqual([call[1] for call in calls], ['/dev/capabilities', '/dev/settings', '/dev/guardrails'])
         self.assertEqual(calls[-1][3], {'code_references': [{'organization': 'Acme', 'repository': 'App', 'platform': 'github', 'filename': 'src/api.py'}]})
         for path in ('/absolute', '../escape', 'src/../escape', 'C:/file', '.', 'src\\file'):
             with self.subTest(path=path):
@@ -98,6 +101,78 @@ class GuardrailsTests(unittest.TestCase):
         self.assertEqual(invoke('--remote', 'https://user:password@private.example/repo')[1]['code'], 'unsupported_remote')
         with patch('sys.stderr', new_callable=io.StringIO), patch.object(sys, 'argv', [str(SCRIPT), '--branch', 'main', '--commit', 'abc']), self.assertRaises(SystemExit):
             self.api.main()
+
+    def test_capability_selection_loads_complete_stable_policies_without_canonical_scope(self):
+        for remote, expected in [(None, 'no_supported_remote'), ('https://private.example/org/repo', 'not_registered'),
+                                 ('git@gitlab.com:Example/Group/App.git', 'loaded')]:
+            boundary = Boundary()
+            boundary.capabilities = {'developer_security_enabled': False}
+            flags = ['guidance', '--repo', '/nonexistent/unversioned-directory']
+            if remote:
+                flags += ['--remote', remote]
+            status, result, calls = self.invoke(*flags, boundary=boundary)
+            self.assertEqual(status, 0)
+            self.assertEqual([policy['guardrail'] for policy in result['guardrails']],
+                             ['Validate account ownership.', 'Validate incoming data.'])
+            self.assertEqual(result['repository']['status'], expected)
+            self.assertEqual(calls[0][1], '/dev/capabilities')
+            self.assertEqual([call[2]['offset'] for call in calls if call[1] == '/guardrails'], [['0'], ['1']])
+            self.assertTrue(all(method == 'GET' for method, _, _, _, _ in calls))
+            if expected == 'loaded':
+                self.assertEqual(result['repository']['concise_summary'], 'Example application')
+        boundary.summary_error = True
+        self.assertEqual(self.invoke('guardrails', '--remote', 'https://gitlab.com/Example/Group/App', boundary=boundary)[1]['repository'],
+                         {'status': 'unavailable', 'reason': 'unavailable'})
+
+    def test_disabled_advanced_commands_stop_before_scope_or_plan_inputs(self):
+        for command in ('settings', 'context', 'plan-register', 'plan-save-review', 'plan-list', 'plan-get',
+                        'plan-delete', 'pr-review', 'pr-review-list', 'context-outcome'):
+            boundary = Boundary()
+            boundary.capabilities = {'developer_security_enabled': False}
+            with self.subTest(command=command):
+                status, result, calls = self.invoke(command, '--repo', '/no/git', boundary=boundary)
+                self.assertEqual((status, result['code']), (1, 'feature_disabled'))
+                self.assertEqual([call[1] for call in calls], ['/dev/capabilities'])
+
+    def test_capabilities_are_exact_booleans_and_errors_never_select_stable(self):
+        for capabilities in ({}, {'developer_security_enabled': None}, {'developer_security_enabled': 0},
+                             {'developer_security_enabled': 'false'}):
+            boundary = Boundary()
+            boundary.capabilities = capabilities
+            with self.subTest(capabilities=capabilities):
+                status, result, calls = self.invoke('plan-register', boundary=boundary)
+                self.assertEqual((status, result['code']), (1, 'invalid_capabilities'))
+                self.assertEqual([call[1] for call in calls], ['/dev/capabilities'])
+        for code in (401, 403, 503):
+            boundary = Boundary()
+            boundary.capability_error = code
+            with self.subTest(code=code):
+                status, result, calls = self.invoke(boundary=boundary)
+                self.assertEqual(status, 1)
+                self.assertEqual(result['status'], 'error')
+                self.assertEqual([call[1] for call in calls], ['/dev/capabilities'])
+        for enabled in (False, True):
+            boundary = Boundary()
+            boundary.capabilities = {'developer_security_enabled': enabled}
+            self.assertEqual(self.invoke('capabilities', boundary=boundary)[:2], (0, boundary.capabilities))
+        boundary.capabilities = {'developer_security_enabled': False}
+        boundary.stable_error = 503
+        boundary.calls.clear()
+        self.assertEqual(self.invoke(boundary=boundary)[1]['code'], 'unavailable')
+        self.assertEqual([call[1] for call in boundary.calls], ['/dev/capabilities', '/guardrails'])
+        boundary = Boundary()
+        boundary.fail_settings = True
+        status, result, calls = self.invoke('--remote', 'https://github.com/Acme/App', boundary=boundary)
+        self.assertEqual((status, result['code']), (1, 'unavailable'))
+        self.assertEqual([call[1] for call in calls], ['/dev/capabilities', '/dev/settings'])
+
+    def test_transport_allows_only_reviewed_baseline_read_routes(self):
+        client = self.api.Client('https://developer.example.invalid', 'synthetic-secret', Boundary())
+        for method, route in [('POST', '/guardrails'), ('GET', '/guardrails/1'), ('GET', '/code-management/repositories/42/other'),
+                              ('GET', '/unreviewed'), ('GET', '//other.example/guardrails')]:
+            with self.subTest(method=method, route=route), self.assertRaises(self.api.PrimeError) as caught:
+                client.request(method, route)
+            self.assertEqual(caught.exception.code, 'invalid_path')
 
     def test_transport_never_follows_redirects(self):
         handler = self.api.NoRedirect()

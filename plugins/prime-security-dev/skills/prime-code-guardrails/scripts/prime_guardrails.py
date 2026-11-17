@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Managed Prime developer workflows. Python 3.9+, standard library only."""
+"""Prime guardrails and managed developer workflows. Python 3.9+, standard library only."""
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from http.client import HTTPException
 import json
 import os
@@ -22,6 +22,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 DEFAULT_ORIGIN = 'https://api.primesec.ai'
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+MAX_PAGES = 1000
 RELEASE_VERSION = '1.5.0-alpha.1'
 MAX_PLAN_BYTES = 256 * 1024
 PLATFORMS = ('github', 'gitlab', 'bitbucket', 'upload')
@@ -130,8 +131,11 @@ class Client:
         self.deadline = time.monotonic() + 120
 
     def request(self, method, path, payload=None):
-        if not path.startswith('/dev/') or re.search(r'[\\\s#]', path):
-            raise PrimeError('invalid_path', 'Developer feature requests require a reviewed /dev route.')
+        baseline_read = method == 'GET' and re.fullmatch(
+            r'/(?:guardrails|code-management/repositories)\?limit=100&offset=[0-9]+|'
+            r'/code-management/repositories/[0-9]+\?detailed_summary_required=true', path)
+        if (not path.startswith('/dev/') and not baseline_read) or re.search(r'[\\\s#]', path):
+            raise PrimeError('invalid_path', 'Prime requests require a reviewed developer route or baseline read route.')
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise PrimeError('timeout', 'Prime request budget exceeded; inspect history before repeating a write.')
@@ -448,6 +452,114 @@ class DeveloperWorkflow:
         return self.request('POST', '/dev/contexts/' + identifier + '/outcomes', {'issue_ids': issue_ids})
 
 
+def paginate(get, path):
+    results, seen = [], set()
+    offset, expected_total = 0, None
+    for _ in range(MAX_PAGES):
+        data = get(path + '?' + urlencode({'limit': 100, 'offset': offset}))
+        items = data.get('results')
+        size, limit = data.get('size'), data.get('limit')
+        total, more = data.get('total'), data.get('has_next')
+        valid = (isinstance(items, list) and all(isinstance(item, dict) for item in items)
+                 and type(size) is int and size == len(items)
+                 and type(limit) is int and 0 < limit and size <= limit
+                 and type(data.get('offset')) is int and data['offset'] == offset
+                 and (total is None or type(total) is int and total >= 0)
+                 and (more is None or type(more) is bool))
+        if not valid:
+            raise PrimeError('invalid_pagination', 'Prime returned invalid pagination; no partial results were accepted.')
+        if total is not None:
+            if expected_total is not None and total != expected_total:
+                raise PrimeError('changed_pagination', 'Prime results changed during loading; retry for a complete snapshot.')
+            expected_total = total
+        for item in items:
+            identity = json.dumps(item, sort_keys=True, separators=(',', ':'))
+            if identity in seen:
+                raise PrimeError('repeated_page', 'Prime repeated a result during pagination; retry for a complete snapshot.')
+            seen.add(identity)
+        results.extend(items)
+        offset += size
+        if expected_total is not None and (offset > expected_total or more is False and offset != expected_total):
+            raise PrimeError('incomplete_pagination', 'Prime pagination is inconsistent; no partial results were accepted.')
+        if more is True and (not size or expected_total is not None and offset >= expected_total):
+            raise PrimeError('incomplete_pagination', 'Prime pagination cannot advance; no partial results were accepted.')
+        if more is False or more is None and (offset == expected_total or expected_total is None and size == 0):
+            return results
+        if not size:
+            raise PrimeError('incomplete_pagination', 'Prime pagination ended before all results were received.')
+    raise PrimeError('pagination_limit', 'Prime exceeded the page limit; no partial results were accepted.')
+
+
+def baseline_repo_identity(remote):
+    if not isinstance(remote, str) or re.search(r'[\s\\]', remote):
+        return None
+    if '://' not in remote:
+        match = re.fullmatch(r'(?:[^/@:]+@)?([^/:]+):(.+)', remote)
+        if not match:
+            return None
+        remote = 'ssh://' + match[1] + '/' + match[2]
+    try:
+        url = urlsplit(remote)
+        if url.scheme not in ('ssh', 'https', 'http', 'git') or not url.hostname or url.query or url.fragment:
+            return None
+        host, port = url.hostname.lower(), url.port
+    except ValueError:
+        return None
+    path = url.path.strip('/').removesuffix('.git')
+    if '/' not in path or any(part in ('', '.', '..') for part in path.split('/')):
+        return None
+    # Preserve case on arbitrary providers; false negatives are safer than incorrect context.
+    if host == 'github.com':
+        path = path.lower()
+    default_port = {'ssh': 22, 'https': 443, 'http': 80, 'git': 9418}[url.scheme]
+    return (host, port if port != default_port else None, path)
+
+
+def match_repo(repositories, remote):
+    identity = baseline_repo_identity(remote)
+    if identity is None:
+        return None
+    matches = [repo for repo in repositories if baseline_repo_identity(repo.get('repo_url')) == identity]
+    if len(matches) > 1:
+        raise PrimeError('ambiguous_repository', 'Multiple Prime registrations match this remote; repository context was skipped.')
+    return matches[0] if matches else None
+
+
+def repository_context(client, remote):
+    if baseline_repo_identity(remote) is None:
+        return {'status': 'no_supported_remote'}
+    try:
+        repo = match_repo(paginate(client.get, '/code-management/repositories'), remote)
+        if repo is None:
+            return {'status': 'not_registered'}
+        if type(repo.get('id')) is not int or repo['id'] < 0:
+            raise PrimeError('invalid_repository', 'Prime returned an invalid repository identifier.')
+        detail = client.get(f"/code-management/repositories/{repo['id']}?detailed_summary_required=true")
+        analysis = detail.get('analysis')
+        if not isinstance(analysis, dict) or not isinstance(analysis.get('concise_summary'), str):
+            raise PrimeError('invalid_summary', 'Prime repository summary is unavailable or malformed.')
+        detailed = analysis.get('detailed_summary')
+        if detailed is not None and not isinstance(detailed, str):
+            raise PrimeError('invalid_summary', 'Prime repository summary is malformed.')
+        return {'status': 'loaded', 'id': repo['id'], 'concise_summary': analysis['concise_summary'],
+                'detailed_summary': detailed}
+    except PrimeError as error:
+        return {'status': 'unavailable', 'reason': error.code}
+
+
+def load_context(client, remote):
+    policies = paginate(client.get, '/guardrails')
+    for policy in policies:
+        if any(not isinstance(policy.get(key), str) or not policy[key].strip()
+               for key in ('guardrail_title', 'guardrail')):
+            raise PrimeError('invalid_guardrail', 'Prime returned a guardrail without a title or policy text; loading failed.')
+    return {'status': 'loaded', 'fetched_at': datetime.now(timezone.utc).isoformat(),
+            'guardrails': [{key: policy[key] for key in ('guardrail_title', 'guardrail', 'category',
+                                                      'framework', 'policy_name', 'policy_id') if key in policy}
+                          for policy in policies],
+            'repository': repository_context(client, remote)}
+
+
 def positive_id(value):
     if type(value) is not int or value <= 0:
         raise PrimeError('invalid_input', 'A positive plan or pull-request ID is required.')
@@ -525,7 +637,7 @@ def code_scope(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', nargs='?', default='guidance', choices=('guidance', 'settings', 'guardrails', 'context', 'plan-register', 'plan-save-review', 'plan-list', 'plan-get', 'plan-delete', 'pr-review', 'pr-review-list', 'context-outcome'))
+    parser.add_argument('command', nargs='?', default='guidance', choices=('capabilities', 'guidance', 'settings', 'guardrails', 'context', 'plan-register', 'plan-save-review', 'plan-list', 'plan-get', 'plan-delete', 'pr-review', 'pr-review-list', 'context-outcome'))
     parser.add_argument('--repo', default='.')
     parser.add_argument('--allow-origin')
     parser.add_argument('--approve-origin')
@@ -563,9 +675,21 @@ def main():
                 raise
             origin = validate_origin(value, args.allow_origin, load_approved_origins())
         token = resolve_token()
-        workflow = DeveloperWorkflow(Client(origin, token))
+        client = Client(origin, token)
+        capabilities = client.get('/dev/capabilities')
+        if type(capabilities.get('developer_security_enabled')) is not bool:
+            raise PrimeError('invalid_capabilities', 'Current developer capabilities could not be read; retry security work explicitly.')
+        workflow = DeveloperWorkflow(client)
         command = args.command
-        if command == 'settings':
+        if command == 'capabilities':
+            result = capabilities
+        elif not capabilities['developer_security_enabled']:
+            if command not in ('guidance', 'guardrails'):
+                raise PrimeError('feature_disabled', 'Managed developer security is unavailable for this account; use account-wide guidance or continue ordinary coding.')
+            result = load_context(client, args.remote or git_remote(args.repo))
+            result['api_origin'] = origin
+            result['repository_directory'] = str(Path(args.repo).resolve())
+        elif command == 'settings':
             result = workflow.settings().response
         elif command in ('guidance', 'guardrails', 'context', 'plan-register'):
             references = code_scope(args)

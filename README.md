@@ -7,7 +7,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 | Component | What it does | Clients |
 |---|---|---|
 | `prime-security-operator` plugin | The `prime` skill plus the Prime MCP server connection | Claude Code, Codex, GitHub Copilot CLI, Cursor |
-| `prime-security-dev` plugin | Managed developer guidance and explicit plan reviews, with reminder adapters | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
+| `prime-security-dev` plugin | Account-wide guardrails and capability-gated managed reviews, with reminder adapters | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
 | `prime` skill | Calls the Prime API using its published route documentation | Any Agent Skills client, including OpenCode, Pi, and Copilot agent mode in IDEs |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
 
@@ -319,7 +319,7 @@ The recommended installation of the cross-client Prime API skill for Claude Code
 
 ### prime-security-dev
 
-The proposed unpublished `1.5.0-alpha.1` adds account-controlled guidance and recoverable explicit plan reviews through `/dev`, with safe shared credentials and reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Dedicated reviewer execution is a separate per-client release gate; automatic Claude plan capture is not enabled. Refresh effective settings before using guidance for every meaningful coding action. Ordinary coding continues when controls are off or settings fail. Older plugins use generic APIs and cannot honor these controls; rolling back loses this behavior. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
+The proposed unpublished `1.5.0-alpha.1` adds per-invocation capability selection: explicit false preserves account-wide guardrails with optional repository summary and no Git requirement; true uses account-controlled guidance and recoverable explicit plan reviews through `/dev`, with safe shared credentials and reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Dedicated reviewer execution is a separate per-client release gate; automatic Claude plan capture is not enabled. Check capabilities before every meaningful coding action and fresh settings in managed mode. Capability, core-policy and managed API errors stop security work without changing modes; ordinary coding continues. The stable branch is selected only by explicit false. Older plugins cannot honor these controls; rolling back loses capability selection. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 

@@ -90,7 +90,8 @@ Redirects are refused, including same-origin redirects. Configure the final API 
 | `file_write_failed` | Choose a new output filename in an existing private directory. Existing files are never overwritten. |
 | `rate_limited`, `network_error`, `timeout` | Check service/connectivity and retry later; do not use stale policy data. |
 | `permission_denied` | Request required access; a renewed credential alone may not fix 403. |
-| `feature_disabled`, `invalid_settings`, `unavailable` | Pause security operations; ordinary coding continues. Retry explicitly after current settings can be read. |
+| `feature_disabled` | Managed commands are unavailable while capabilities are false; use account-wide guidance. If capabilities are true, honor the independent guidance/plan setting. |
+| `invalid_capabilities`, `invalid_settings`, `unavailable` | Pause security work and retry explicitly after the failed capability/settings/API read recovers. Errors never select another mode; ordinary coding continues. |
 | `conflict` | Pause the attempted operation; read fresh settings and choose an explicit next step. |
 | Schema/contract errors | Report the mismatch against [the reviewed contract](api-contract.md); update/test the helper before use. |
 
@@ -98,4 +99,4 @@ Diagnostics never need the token, authorization header, raw HTTP error body, or 
 
 ## Work after renewal
 
-Read fresh settings before new security work. Inspect `plan-list`/`plan-get` after an uncertain registration and inspect `review_result` after an uncertain review save before explicitly repeating either operation. Every successful registration creates a new row; review PUT replaces the current result. History and authorized deletion remain available when controls are off or settings cannot be read. See [explicit recovery and cleanup](api-contract.md#explicit-recovery-and-cleanup) for legacy artifact cleanup.
+Read capabilities before security work; only explicit false selects stable account-wide guidance. In enabled mode read fresh settings before new security work. Inspect `plan-list`/`plan-get` after an uncertain registration and inspect `review_result` after an uncertain review save before explicitly repeating either operation. Every successful registration creates a new row; review PUT replaces the current result. History and authorized deletion remain available when per-account controls are off or settings cannot be read, provided fresh capabilities are enabled. Capability errors stop security work without selecting stable mode. See [explicit recovery and cleanup](api-contract.md#explicit-recovery-and-cleanup) for legacy artifact cleanup.

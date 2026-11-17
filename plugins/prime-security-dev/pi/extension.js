@@ -1,5 +1,5 @@
 // Pi extension (@earendil-works/pi-coding-agent). Loaded from the repository's root package.json.
-const reminder = 'Use the prime-code-guardrails skill before meaningful coding actions. Check fresh settings before using guidance and before every plan, retry or completion. Discard reusable guidance after confirmed disable; ordinary coding continues when disabled or settings are unavailable. This reminder does not fetch settings or capture plans.';
+const reminder = 'Use the prime-code-guardrails skill before meaningful coding actions. Check capabilities first: explicit false uses account-wide guidance; true requires fresh settings before managed security work and reviewer dispatch. Discard reusable managed guidance after its confirmed disable. Capability, core-policy or managed API errors pause security work; ordinary coding continues. This reminder makes no API calls or plan captures.';
 
 export default function primeSecurityDev(pi) {
   // Runs before each agent run. Pi patches only changed sections, so an unchanged reminder keeps

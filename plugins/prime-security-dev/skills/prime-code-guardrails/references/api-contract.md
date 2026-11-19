@@ -31,7 +31,7 @@ List commands do not infer local repository filters. Omit all repository fields 
 | `capabilities` | GET `/dev/capabilities`, no scope required |
 | `settings` | GET `/dev/settings` |
 | `guidance` (default), `guardrails` | Scope → POST `/dev/guardrails` `{code_references}` |
-| `context` | Scope, `--intent` (default empty, max 500 chars) → POST `/dev/context` |
+| `context` | Scope → POST `/dev/context` |
 | `plan-register` | Scope, `--plan-file`, `--title`, actual `--client`, `--client-version`, optional `--base-commit` → POST `/dev/plans` |
 | `plan-get` | Positive `--plan-id` → GET `/dev/plans/{id}` |
 | `plan-list` | Pagination; optional `--owner-id`, `--status registered\|review_recorded\|review_failed`, `--title`, repository trio → GET `/dev/plans` |
@@ -99,7 +99,7 @@ Save sends only current request fields. PUT replaces the entire current result a
 
 PR creation sends `{pr_ref:{organization,repository,platform,pull_request}}` once and returns native `{job_id,status}` (integer job ID). Label it **request accepted**, never reviewed/completed. PR list contains accepted request receipts with canonical `pr_ref`, requester and time; it is not live job status/results. There is no PR detail, scan-result or generic status-polling helper route.
 
-Outcome reporting uses numeric IDs from the original context's `kind=code_issue` evidence `source_entity_id`, not its string evidence handles. Send only issues the developer explicitly confirms were addressed. The result is a developer-reported mitigation estimate; it does not change CMS finding status. Context/review delivery is not mitigation.
+Outcome reporting uses numeric IDs from the original context's `kind=code_issue` evidence `code_issue.id` or `code_issue.related_issue_ids`, not its string evidence handles. Send only issues the developer explicitly confirms were addressed. The result is a developer-reported mitigation estimate; it does not change CMS finding status. Context/review delivery is not mitigation.
 
 ## Explicit recovery and cleanup
 

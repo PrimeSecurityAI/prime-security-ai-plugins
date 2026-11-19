@@ -168,7 +168,7 @@ class Client:
             messages = {
                 401: ('authentication_failed', 'Renew the credential in your terminal; an environment PAT overrides the private token file.' + uncertain_write),
                 403: ('permission_denied', 'The credential lacks permission; request the required access before explicit recovery.'),
-                404: ('not_found', 'The requested developer record is absent or inaccessible to this caller.'),
+                404: ('not_found', 'The repository is not connected to Prime, or the requested developer record is absent or inaccessible to this caller.'),
                 409: ('conflict', 'Developer request paused; check fresh settings before explicitly attempting new security work.'),
                 422: ('invalid_input', 'Prime rejected the input; check the reviewed developer contract.'),
                 429: ('rate_limited', 'Prime rate limit reached; retry explicitly later.'),
@@ -315,11 +315,9 @@ class DeveloperWorkflow:
         self.settings().require('guidance')
         return self.validate_context(self.request('POST', '/dev/guardrails', {'code_references': code_references}, True), code_references, True)
 
-    def context(self, code_references, intent=''):
-        if not isinstance(intent, str) or len(intent) > 500:
-            raise PrimeError('invalid_input', 'Context intent is limited to 500 characters.')
+    def context(self, code_references):
         self.settings().require('guidance')
-        return self.validate_context(self.request('POST', '/dev/context', {'code_references': code_references, 'intent': intent}, True), code_references, True)
+        return self.validate_context(self.request('POST', '/dev/context', {'code_references': code_references}, True), code_references, True)
 
     def validate_context(self, context, code_references, require_guards=False):
         try:
@@ -676,7 +674,6 @@ def main():
     parser.add_argument('--result-file', type=Path)
     parser.add_argument('--plan-id', type=int)
     parser.add_argument('--path', action='append', default=[])
-    parser.add_argument('--intent', default='')
     parser.add_argument('--remote')
     parser.add_argument('--organization')
     parser.add_argument('--repository')
@@ -740,7 +737,7 @@ def main():
             elif command in GUIDANCE_COMMANDS:
                 result = workflow.guardrails(references)
             elif command == 'context':
-                result = workflow.context(references, args.intent)
+                result = workflow.context(references)
             else:
                 names = ('title', 'client', 'client_version')
                 values = vars(args)
@@ -782,6 +779,8 @@ def main():
             receipt = {'guardrail_count': len(policies)} if isinstance(policies, list) else {}
             if isinstance(result.get('repository'), dict):
                 receipt['repository_status'] = result['repository'].get('status')
+            elif 'repository' in result.get('unavailable_sources', []):
+                receipt['repository_status'] = 'not_connected'
             result = {**receipt, 'status': result.get('status', 'saved'), 'output_path': str(output_path), **ids}
         exit_code = 0
     except PrimeError as error:

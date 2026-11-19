@@ -378,6 +378,15 @@ class GuardrailsTests(unittest.TestCase):
             status, result, _ = self.invoke('--repo', '/no/git', '--output', str(root / 'account.json'), boundary=boundary)
             self.assertEqual((status, result['guardrail_count'], result['repository_status']), (0, 2, 'no_supported_remote'))
 
+    def test_unconnected_repository_receipt_reports_not_connected(self):
+        boundary = Boundary()
+        boundary.snapshot = dict(context(), evidence=[], unavailable_sources=['repository'])
+        with tempfile.TemporaryDirectory() as directory:
+            status, result, _ = self.invoke('--remote', 'https://gitlab.com/Example/Group/App', '--branch', 'feature/refunds',
+                                            '--path', 'src/api.py', '--output', str(Path(directory) / 'policies.json'),
+                                            boundary=boundary)
+        self.assertEqual((status, result['repository_status']), (0, 'not_connected'))
+
     def test_created_plan_snapshot_failure_reports_known_plan(self):
         with tempfile.TemporaryDirectory() as directory:
             plan = Path(directory) / 'plan.md'

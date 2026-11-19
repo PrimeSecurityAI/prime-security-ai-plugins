@@ -175,7 +175,7 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.assertEqual(controls.response['caller'], dict(account_id='account', user_id='owner'))
         guidance = self.workflow.guardrails([REF])
         self.assertEqual(guidance['policies'][0]['guardrail'], 'Validate account ownership.')
-        self.assertEqual(self.workflow.context([REF], 'Refund & authorization')['context_id'], CONTEXT_ID)
+        self.assertEqual(self.workflow.context([REF])['context_id'], CONTEXT_ID)
         registered = self.register()
         self.assertEqual(set(registered), {'id', 'context_snapshot'})
         self.assertEqual(registered['context_snapshot']['evidence'][0]['code_references'], [EVIDENCE_REF])
@@ -192,7 +192,7 @@ class DeveloperWorkflowTests(unittest.TestCase):
         self.assertEqual(self.workflow.delete(11), {'status': 'deleted', 'id': 11})
         calls = {(method, path): body for method, path, _, body, _ in self.boundary.calls}
         self.assertEqual(calls['POST', '/dev/guardrails'], {'code_references': [REF]})
-        self.assertEqual(calls['POST', '/dev/context'], {'code_references': [REF], 'intent': 'Refund & authorization'})
+        self.assertEqual(calls['POST', '/dev/context'], {'code_references': [REF]})
         self.assertEqual(calls['POST', '/dev/plans'], dict(self.payload, markdown='# Plan\r\nTrust all input.\r\n'))
         self.assertEqual(calls['PUT', '/dev/plans/11/review'], review())
         self.assertEqual(calls['POST', '/dev/pr-reviews'], {'pr_ref': dict(REPO, pull_request=42)})

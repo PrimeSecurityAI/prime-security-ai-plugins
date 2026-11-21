@@ -9,7 +9,7 @@ All tools are on the Prime MCP server and act as the signed-in user.
 | | `report_developer_security_context_outcome` | `context_id`, `issue_ids` | Recorded outcome |
 | Security plan | `create_developer_security_plan` | `code_references`, `title`, `markdown` | Plan with `id`, `security_review_id` |
 | | `get_developer_security_plan` | `plan_id` | Plan with `security_review` |
-| PR security review | `start_developer_pr_review` | `pr_ref` | `triggered`, `review` |
+| PR security review | `start_developer_pr_review` | `pr_ref` | `job`, `review` |
 | | `get_developer_pr_review` | `review_id` | PR review |
 
 ## Inputs

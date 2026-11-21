@@ -45,7 +45,7 @@ When asked to security-review a plan:
 
 When asked for a security review of a pull request:
 
-1. Call `start_developer_pr_review` with `pr_ref` `{organization, repository, platform, pull_request}`. Prime reuses an existing review of that PR and starts one only when none exists or the last one failed or was canceled.
+1. Call `start_developer_pr_review` with `pr_ref` `{organization, repository, platform, pull_request}`. This starts Prime's PR review flow; Prime decides whether to reuse a running review.
 2. Poll `get_developer_pr_review` with `review.id` about every 30 seconds while `review_state` is `PENDING`, `PROCESSING` or `WAITING_FOR_CATALOG`. After 15 minutes, give the user the review id and stop polling.
 3. On `COMPLETED`, report `guardrail_issues`, `threat_issues`, `sca_issues` and `secret_issues`. On `FAILED` or `CANCELED`, say so.
 

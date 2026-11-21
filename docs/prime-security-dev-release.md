@@ -19,7 +19,7 @@ Deploy front-service with the developer MCP tools and the `developer-security` f
 2. Confirm the session reminder reaches the model at startup, resume and compaction without accumulating messages.
 3. In a connected repository, ask for a change: the agent calls `get_developer_guardrails` and `get_developer_security_context` with code references derived from `origin` and relative paths, applies guardrails and names them. In an unconnected repository it discloses account-wide guardrails.
 4. Ask for a plan review: `create_developer_security_plan`, polling `get_developer_security_plan` until `COMPLETED`, findings presented, plan revised; the review appears in the Prime UI.
-5. Ask for a PR review: `start_developer_pr_review` reuses an existing review or starts one, `get_developer_pr_review` is polled to `COMPLETED`, and the agent reports Prime's issues without reviewing the diff itself.
+5. Ask for a PR review: `start_developer_pr_review` starts Prime's PR review flow, `get_developer_pr_review` is polled to `COMPLETED`, and the agent reports Prime's issues without reviewing the diff itself.
 6. Confirm a mitigation report is sent only after explicit developer confirmation.
 7. Turn the `developer-security` flag off (403) and one feature off in account settings (409 `developer_feature_disabled`): the agent tells the user once and continues ordinary coding without other API workarounds.
 8. Validate update/uninstall/restart without duplicate skills or MCP servers, including when the operator plugin is also installed.

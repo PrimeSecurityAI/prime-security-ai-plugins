@@ -11,8 +11,8 @@
     {
       "name": "prime-security-dev",
       "source": "./plugins/prime-security-dev",
-      "description": "Prime Security policy guidance for coding agents",
-      "version": "1.5.0-alpha.3"
+      "description": "Prime Security guardrails, security context, plan reviews and PR reviews for coding agents, with session reminders",
+      "version": "1.5.0-alpha.4"
     }
   ]
 }

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const adapter = new URL('../plugins/prime-security-dev/skills/prime-code-guardrails/adapters/opencode.js', import.meta.url);
-const hooksScript = new URL('../plugins/prime-security-dev/skills/prime-code-guardrails/scripts/prime_hooks.py', import.meta.url);
+const adapter = new URL('../plugins/prime-security-dev/skills/prime-developer-security/adapters/opencode.js', import.meta.url);
+const hooksScript = new URL('../plugins/prime-security-dev/skills/prime-developer-security/scripts/prime_hooks.py', import.meta.url);
 
 async function setUp() {
   const { default: plugin } = await import(adapter);
@@ -41,7 +41,7 @@ test('OpenCode v2 adds one reminder to each freshly built request', async () => 
   assert.equal(request.system[0].text, 'existing');
   assert.equal(request.system.length, 2);
   assert.equal(request.system[1].type, 'text');
-  assert.match(request.system[1].text, /prime-code-guardrails/);
+  assert.match(request.system[1].text, /prime-developer-security/);
   const next = { sessionID: 'one', system: [], messages: [] };
   await context(next);
   assert.equal(next.system.length, 1);

@@ -7,7 +7,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 | Component | What it does | Clients |
 |---|---|---|
 | `prime-security-operator` plugin | The `prime` skill plus the Prime MCP server connection | Claude Code, Codex, GitHub Copilot CLI, Cursor |
-| `prime-security-dev` plugin | Account-wide guardrails and capability-gated managed reviews, with reminder adapters | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
+| `prime-security-dev` plugin | Guardrails, security context, plan and PR security reviews through the Prime MCP server, with reminder adapters | Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, Pi |
 | `prime` skill | Calls the Prime API using its published route documentation | Any Agent Skills client, including OpenCode, Pi, and Copilot agent mode in IDEs |
 | Prime MCP server | Exposes Prime as MCP tools | Claude (web, Desktop, mobile), Claude Code, any MCP client |
 
@@ -18,7 +18,7 @@ Plugins, Agent Skills, and an MCP server for working with Prime Security from AI
 - For the `prime` skill's browser login: `python3` 3.9 or later.
 - For the skill-only installation: Node.js 22.20.0 or later with `npx`, and HTTPS access to npm.
 
-On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The development guardrails helper reads `PRIME_PAT_TOKEN` or the shared token file. The plugins' MCP connections and the Claude connector log in through the browser; manual MCP configurations read `PRIME_PAT_TOKEN`, see [Configure Credentials](#configure-credentials).
+On first use the `prime` skill opens your browser to log in to Prime Security, so the skill needs a Personal Access Token (PAT) only on machines without a browser. The plugins' MCP connections and the Claude connector log in through the browser; manual MCP configurations read `PRIME_PAT_TOKEN`, see [Configure Credentials](#configure-credentials).
 
 ## Plugin Or Skill?
 
@@ -28,15 +28,15 @@ A **skill** is instructions the agent loads when it decides the skill is relevan
 
 | | Plugin | Skill only (`npx skills add`) |
 |---|---|---|
-| `prime` or `prime-code-guardrails` skill | Included | Included |
+| `prime` or `prime-developer-security` skill | Included | Included |
 | Prime MCP server | Connected | Configure it yourself; see [MCP Server](#mcp-server) |
-| Guardrails reminder (dev) | Injected by the client | None: the agent uses the skill only when it chooses to or you invoke it |
+| Session reminder (dev) | Injected by the client | None: the agent uses the skill only when it chooses to or you invoke it |
 | Updates | The client's plugin manager | `npx skills update` |
 | Clients | Operator: Claude Code, Codex, GitHub Copilot CLI, Cursor. Dev: also OpenCode and Pi | Any Agent Skills client |
 
 `npx skills add` installs only skills, even from this repository's plugin manifests; it never installs hooks or MCP servers. Install the plugin **or** the skill for a client, never both: duplicate skills make invocation and updates ambiguous.
 
-For development guardrails, follow the [prime-security-dev guide](plugins/prime-security-dev/README.md). The rest of this page covers the operator.
+For developer security, follow the [prime-security-dev guide](plugins/prime-security-dev/README.md). The rest of this page covers the operator.
 
 ## Install The Operator Plugin
 
@@ -196,6 +196,7 @@ Prime exposes a remote MCP server over Streamable HTTP at `https://api.primesec.
 | `get_repositories`, `get_repository_by_id`, `get_repository_code_issues` | Code repositories and their findings |
 | `get_posture_metrics` | Security posture metrics |
 | `get_all_products` | Products |
+| `get_developer_guardrails`, `get_developer_security_context`, `create_developer_security_plan`, `start_developer_pr_review` and their follow-ups | Developer security, used by the `prime-developer-security` skill |
 | `start_prime_ai_conversation`, `ask_prime_ai`, `get_prime_ai_answer` | Ask Prime's security AI a free-form question, then poll `get_prime_ai_answer` until the answer is complete |
 | `search_prime_operations`, `call_prime_operation` | Find and run any other Prime API operation |
 
@@ -232,7 +233,7 @@ claude mcp add --transport http --scope user prime https://api.primesec.ai/mcp -
 
 ### Codex
 
-The operator Codex plugin connects the server; see [Codex Plugin](#codex-plugin). Without a plugin:
+Either Codex plugin connects the server; see [Codex Plugin](#codex-plugin). Without a plugin:
 
 ```bash
 codex mcp add prime --url https://api.primesec.ai/mcp --bearer-token-env-var PRIME_PAT_TOKEN
@@ -270,7 +271,7 @@ On a machine without a browser, replace `"oauth": {...}` with `"headers": {"Auth
 
 ### GitHub Copilot CLI
 
-The `prime-security-operator` Copilot plugin connects the server; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
+Either Copilot plugin connects the server; see [GitHub Copilot CLI Plugin](#github-copilot-cli-plugin). Without a plugin, add it at user scope. This stores the token in `~/.copilot/mcp-config.json`:
 
 ```bash
 copilot mcp add --transport http --header "Authorization: Bearer $PRIME_PAT_TOKEN" prime https://api.primesec.ai/mcp
@@ -319,7 +320,7 @@ The recommended installation of the cross-client Prime API skill for Claude Code
 
 ### prime-security-dev
 
-The proposed unpublished `1.5.0-alpha.3` adds per-invocation capability selection: explicit false preserves account-wide guardrails with optional repository summary and no Git requirement; true uses account-controlled guidance and recoverable explicit plan reviews through `/dev`, with safe shared credentials and reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Dedicated reviewer execution is a separate per-client release gate; automatic Claude plan capture is not enabled. Helper calls check capabilities and gated settings; fresh controls are still required before cached guidance reuse and reviewer dispatch. Enabled guidance without supported identity may use account-wide policies after fresh guidance=true, without code-area coverage. Capability, core-policy and managed API errors stop security work without changing modes; ordinary coding continues. Explicit false selects stable mode; enabled account-wide guidance is limited to absent/unsupported identity, never API failure. Older plugins cannot honor these controls; rolling back loses capability selection. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
+The proposed unpublished `1.5.0-alpha.4` gives coding agents the organization's guardrails and security context before coding, and Prime security reviews of plans and pull requests on request, through the Prime MCP server's developer tools. It includes reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 
@@ -336,7 +337,7 @@ plugins/
     |-- .claude-plugin/ .codex-plugin/ .cursor-plugin/ .github/plugin/
     |-- hooks/hooks.json codex.json cursor.json copilot.json
     |-- pi/extension.js
-    `-- skills/prime-code-guardrails/   (adapters/opencode.js)
+    `-- skills/prime-developer-security/   (adapters/opencode.js)
 ```
 
 ## License

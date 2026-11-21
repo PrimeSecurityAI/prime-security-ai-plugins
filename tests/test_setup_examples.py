@@ -9,8 +9,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ['README.md', 'plugins/prime-security-operator/README.md',
-        'plugins/prime-security-operator/skills/prime/SKILL.md',
-        'plugins/prime-security-dev/skills/prime-code-guardrails/references/setup.md']
+        'plugins/prime-security-operator/skills/prime/SKILL.md']
 SHELLS = ('bash', 'zsh')
 
 

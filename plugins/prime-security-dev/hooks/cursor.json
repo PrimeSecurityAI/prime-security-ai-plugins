@@ -2,7 +2,7 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "python3 ./skills/prime-code-guardrails/scripts/prime_hooks.py reminder",
+        "command": "python3 ./skills/prime-developer-security/scripts/prime_hooks.py reminder",
         "timeout": 5
       }
     ]

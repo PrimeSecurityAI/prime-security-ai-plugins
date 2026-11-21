@@ -6,7 +6,7 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1] / 'plugins/prime-security-dev'
-SCRIPT = ROOT / 'skills/prime-code-guardrails/scripts/prime_hooks.py'
+SCRIPT = ROOT / 'skills/prime-developer-security/scripts/prime_hooks.py'
 
 
 class HookTests(unittest.TestCase):
@@ -20,19 +20,18 @@ class HookTests(unittest.TestCase):
                 result = self.invoke({'hook_event_name': 'SessionStart', 'source': source})
                 context = json.loads(result.stdout)['hookSpecificOutput']
                 self.assertEqual(context['hookEventName'], 'SessionStart')
-                self.assertIn('prime-code-guardrails', context['additionalContext'])
+                self.assertIn('prime-developer-security', context['additionalContext'])
 
-    def test_reminder_requires_current_settings_before_meaningful_action(self):
+    def test_reminder_names_the_mcp_tools_to_call_before_coding(self):
         result = self.invoke({'hook_event_name': 'SessionStart'})
         context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
-        self.assertIn('capabilities', context)
-        self.assertIn('account-wide', context)
-        self.assertIn('fresh settings', context)
+        self.assertIn('get_developer_guardrails', context)
+        self.assertIn('get_developer_security_context', context)
         self.assertIn('ordinary coding', context)
 
     def test_cursor_session_start_provides_context(self):
         result = self.invoke({'hook_event_name': 'sessionStart', 'composer_mode': 'agent'})
-        self.assertIn('prime-code-guardrails', json.loads(result.stdout)['additional_context'])
+        self.assertIn('prime-developer-security', json.loads(result.stdout)['additional_context'])
 
     def test_ordinary_prompts_do_not_add_reminders(self):
         result = self.invoke({'hook_event_name': 'UserPromptSubmit'})
@@ -50,9 +49,9 @@ class HookTests(unittest.TestCase):
             hooks = json.loads((ROOT / 'hooks' / name).read_text())['hooks']
             self.assertEqual(set(hooks), {event})
 
-    def test_codex_manifest_registers_hooks_without_mcp(self):
+    def test_codex_manifest_registers_hooks(self):
         manifest = json.loads((ROOT / '.codex-plugin/plugin.json').read_text())
-        self.assertEqual((manifest['hooks'], manifest['mcpServers']), ('./hooks/codex.json', {}))
+        self.assertEqual(manifest['hooks'], './hooks/codex.json')
         self.assertFalse((ROOT / 'plugin.json').exists())  # Codex drops all hooks for agent-plugins root manifests
 
     def test_marketplace_entries_match_plugin_manifests(self):
@@ -64,9 +63,6 @@ class HookTests(unittest.TestCase):
                     manifest = json.loads((plugin / folder / 'plugin.json').read_text())
                     version = json.loads((plugin / '.claude-plugin/plugin.json').read_text())['version']
                     self.assertEqual((manifest['name'], manifest['version'], entry.get('version', version)), (entry['name'], version, version))
-                    if entry['name'] == 'prime-security-dev':
-                        helper = (ROOT / 'skills/prime-code-guardrails/scripts/prime_guardrails.py').read_text()
-                        self.assertIn("RELEASE_VERSION = '" + version + "'", helper)
                     if folder == '.cursor-plugin':
                         self.assertTrue((plugin / manifest['logo']).is_file())
 
@@ -78,6 +74,8 @@ class HookTests(unittest.TestCase):
             'prime-security-operator/.github/plugin/plugin.json': 'prime-copilot',
             'prime-security-operator/.cursor-plugin/plugin.json': 'prime-cursor',
             'prime-security-dev/.claude-plugin/plugin.json': 'prime-claude-code',
+            'prime-security-dev/.codex-plugin/plugin.json': 'prime-codex',
+            'prime-security-dev/.github/plugin/plugin.json': 'prime-copilot',
             'prime-security-dev/.cursor-plugin/plugin.json': 'prime-cursor',
         }
         for path, client_id in configs.items():
@@ -95,17 +93,16 @@ class HookTests(unittest.TestCase):
                                      '--format', 'copilot')
                 output = json.loads(result.stdout)
                 self.assertEqual(set(output), {'additionalContext'})
-                self.assertIn('prime-code-guardrails', output['additionalContext'])
+                self.assertIn('prime-developer-security', output['additionalContext'])
 
     def test_unknown_arguments_are_advisory(self):
         result = self.invoke({'hook_event_name': 'SessionStart'}, '--format', 'other')
         self.assertEqual(result.returncode, 0)
         self.assertEqual(json.loads(result.stdout), {})
 
-    def test_copilot_manifest_registers_hooks_without_mcp(self):
+    def test_copilot_manifest_registers_hooks(self):
         manifest = json.loads((ROOT / '.github/plugin/plugin.json').read_text())
-        self.assertEqual((manifest['skills'], manifest['hooks'], manifest['mcpServers']),
-                         ('./skills/', './hooks/copilot.json', {}))
+        self.assertEqual((manifest['skills'], manifest['hooks']), ('./skills/', './hooks/copilot.json'))
         self.assertEqual(json.loads((ROOT / 'hooks/copilot.json').read_text())['version'], 1)
 
     def test_copilot_hook_command_finds_the_script(self):
@@ -116,4 +113,4 @@ class HookTests(unittest.TestCase):
             with self.subTest(env=extra_env, cwd=cwd):
                 result = subprocess.run(['bash', '-c', command], input=payload, cwd=cwd, text=True,
                                         capture_output=True, env={'PATH': os.environ['PATH'], **extra_env})
-                self.assertIn('prime-code-guardrails', json.loads(result.stdout)['additionalContext'])
+                self.assertIn('prime-developer-security', json.loads(result.stdout)['additionalContext'])

@@ -22,7 +22,7 @@ All tools are on the Prime MCP server and act as the signed-in user.
 
 - `modules[]`: `{id, name}` of the modules Prime matched to the paths. Empty when the repository is not connected; `limitations` then says so.
 - `guardrails[]`: `guardrail` (rule text), `guardrail_title`, `category`, `external_id`, `framework`, `policy_name`. Only guardrails from the packages that cover `modules`, or account-wide packages for an unconnected repository.
-- `evidence[]`: `{id, kind, text, code_references}` where `kind` is `architecture`, `component`, `safeguard` or `attack_vector`, plus the matching detail:
+- `evidence[]`: `{id, kind, text, code_references}` where `kind` is `architecture`, `component`, `safeguard`, `attack_vector` (code threats) or `design_attack_vector`, plus the matching detail:
   - `code_issue`: `{id, related_issue_ids, title, type, severity, suggested_fix}`
   - `safeguard`: `{title, category, assessment}`
   - `design_attack_vector`: `{name, security_review_id, security_review_title, steps}`

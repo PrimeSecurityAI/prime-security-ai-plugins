@@ -12,10 +12,10 @@ and reads a top-level `additionalContext`, so its hook passes `--format copilot`
 import json
 import sys
 
-REMINDER = ('Use the prime-code-guardrails skill before changing code. Load policies once for an '
-            'independent coding task; follow-up messages in that task reuse the full policy context. '
-            'Reload after repository, account, or API origin changes, or when compaction loses policy text. '
-            'This reminder does not mean policies have been loaded.')
+REMINDER = ('Use the prime-developer-security skill before meaningful coding actions: call the Prime MCP tools '
+            'get_developer_guardrails and get_developer_security_context for the files you will change. '
+            'Use create_developer_security_plan and start_developer_pr_review only when requested. '
+            'If the tools are unavailable or disabled, tell the user and continue ordinary coding. This reminder makes no API calls.')
 
 
 def parse_format(args):

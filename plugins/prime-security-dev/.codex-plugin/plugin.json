@@ -1,9 +1,11 @@
 {
   "name": "prime-security-dev",
-  "version": "1.4.0",
-  "description": "Prime Security policy guidance with lifecycle reminders",
+  "version": "1.5.0-alpha.4",
+  "description": "Prime Security guardrails, security context, plan reviews and PR reviews for coding agents, with session reminders",
   "author": {"name": "Prime Security"},
   "skills": "./skills/",
   "hooks": "./hooks/codex.json",
-  "mcpServers": {}
+  "mcpServers": {
+    "prime": {"type": "http", "url": "https://api.primesec.ai/mcp", "oauth": {"clientId": "prime-codex"}}
+  }
 }

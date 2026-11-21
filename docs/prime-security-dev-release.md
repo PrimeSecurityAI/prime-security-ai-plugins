@@ -1,53 +1,29 @@
 # Prime Security Dev release checklist
 
-Use this checklist before publishing a release candidate. Record results, exact client versions, operating systems, API environment, and immutable commit in the release PR. Do not attach raw policies, PATs, or private source.
+Proposed unpublished version: **1.5.0-alpha.4**. Record the immutable commit, client/model versions, OS and API origin with results. Operator behavior and version stay unchanged.
 
-## Automated checks
+## What changed in alpha.4
 
-- Python and Node suites pass on macOS and Linux, including the minimum supported Python version.
-- Complete policy artifacts are recoverable from private files; failed loads publish no artifact and existing destinations are not overwritten.
-- Schema, pagination, authentication, exact-origin approval, and repository-matching failure cases pass.
-- Claude skill/plugin/marketplace validation passes.
-- Installations include the entire skill folder and its helper/reference resources.
+The skill is renamed `prime-developer-security` and calls the Prime MCP server's developer tools instead of the bundled Python REST helper, which is removed. The Codex and Copilot plugins now connect the MCP server like the Claude Code and Cursor plugins. The version advances because native Claude updates report an unchanged version as up to date and keep the cached skill.
 
-## Live acceptance
+## Local checks
 
-Exercise each supported client: Claude Code, Codex, OpenCode 2.x, Cursor, GitHub Copilot (CLI plugin, plus VS Code agent mode for the standalone skill), and Pi. Use an authorized test account and disposable repositories, without production mutations.
+- `python3 -m unittest discover -s tests -v`, `node --test tests/opencode.test.mjs tests/pi.test.mjs`, and `claude plugin validate` for dev, operator and root marketplace.
+- Dev manifests, marketplaces and the Pi `package.json` share one version; each plugin MCP server logs in with its client id.
 
-- Fresh install and explicit skill invocation load the complete policy set.
-- A coding request selects the skill automatically, or the documented explicit invocation reliably invokes it.
-- Missing/expired credentials produce safe recovery instructions and no false success.
-- Follow-up messages reuse the ongoing task's policies; a new independent task or repository/account change reloads them.
-- Session start/resume and compaction recovery provide guidance. Claude/Codex/Cursor/Copilot ordinary prompts do not add transcript reminders; OpenCode and Pi include guidance in each fresh system prompt without accumulating messages.
-- Copilot CLI plugin: `copilot plugin install prime-security-dev@prime` loads the skill and `hooks/copilot.json` from `.github/plugin/plugin.json` (not the Claude manifest), the sessionStart reminder reaches the model on startup, resume, and `/new`, and the hook command finds the script (record which plugin-root variable Copilot sets, and the hook working directory). Record whether the operator plugin's MCP server starts the browser login with client ID `prime-copilot`.
-- OpenCode 2.x: the `~/.config/opencode/plugins/prime-security-dev.js` wrapper loads, `context` adds one reminder per request (including after compaction and in subagent sessions), and no messages accumulate.
-- Pi: `pi install git:github.com/PrimeSecurityAI/prime-security-ai-plugins@<ref>` loads the skill and extension, the `prime_guardrails` section appears once, and disappears with `--no-skills`.
-- Optional adapters work when enabled; explicit standalone invocation works without them.
-- Large policy sets are fully read from the artifact, including policy text longer than a shell output limit.
-- Update, uninstall, and restart leave no duplicate skill or broken adapter.
+## Real-client acceptance
 
-Verify empty-policy accounts separately from unavailable service responses. Check unregistered, uniquely matched SSH/HTTPS, and ambiguous repositories. Provider-specific remote rewrites may intentionally skip context; never guess by directory name. Windows adapters are not certified by this release.
+Deploy front-service with the developer MCP tools and the `developer-security` flag on for the test account first. For each client:
 
-## Publication and rollback
+1. Install the plugin (or skill plus manual MCP for OpenCode/Pi), log in to the MCP server, and confirm the `get_developer_*` tools are listed. For dev, launch Claude Code with `PRIME_API_URL` set to the dev front-service origin; other clients need a manual MCP entry for that origin.
+2. Confirm the session reminder reaches the model at startup, resume and compaction without accumulating messages.
+3. In a connected repository, ask for a change: the agent calls `get_developer_guardrails` and `get_developer_security_context` with code references derived from `origin` and relative paths, applies guardrails and names them. In an unconnected repository it discloses account-wide guardrails.
+4. Ask for a plan review: `create_developer_security_plan`, polling `get_developer_security_plan` until `COMPLETED`, findings presented, plan revised; the review appears in the Prime UI.
+5. Ask for a PR review: `start_developer_pr_review` starts Prime's PR review flow, `get_developer_pr_review` is polled to `COMPLETED`, and the agent reports Prime's issues without reviewing the diff itself.
+6. Confirm a mitigation report is sent only after explicit developer confirmation.
+7. Turn the `developer-security` flag off (403) and one feature off in account settings (409 `developer_feature_disabled`): the agent tells the user once and continues ordinary coding without other API workarounds.
+8. Validate update/uninstall/restart without duplicate skills or MCP servers, including when the operator plugin is also installed.
 
-- Supported API contracts and client interfaces have not drifted.
-- An approved brand icon is available if required by the target directory.
-- Installation from the final immutable release reference succeeds.
-- Complete the acceptance checks before customer rollout, then pilot with a small group.
-- Version metadata agrees across the Claude, Codex, Cursor, Copilot, and Pi (`package.json`) manifests and all marketplace entries.
-- For rollback, reinstall the previous reviewed version. OpenCode 1.x users need a 1.2.x release, whose adapter uses the 1.x plugin API. Shared token files remain usable by the operator skill.
+## Publication
 
-## Reference documentation
-
-- https://learn.chatgpt.com/docs/build-skills
-- https://learn.chatgpt.com/docs/hooks
-- https://developers.openai.com/plugins/build/plugins
-- https://code.claude.com/docs/en/hooks
-- https://opencode.ai/docs/skills/
-- https://opencode.ai/docs/plugins/
-- https://opencode.ai/v2/docs/build/plugins/migrate-v1
-- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md
-- https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md
-- https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference
-- https://docs.github.com/en/copilot/reference/hooks-configuration
-- https://docs.github.com/en/copilot/concepts/agents/about-agent-skills
+Publish only the client subset that passed acceptance, pinned to a reviewed immutable reference. Older backends without the developer MCP tools cannot serve this version.

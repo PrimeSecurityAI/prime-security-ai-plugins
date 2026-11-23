@@ -39,7 +39,7 @@ When asked to security-review a plan:
 
 1. Call `create_developer_security_plan` with `code_references`, a `title` and the plan as `markdown`. Keep the returned `id`.
 2. Poll `get_developer_security_plan` with `plan_id` about every 30 seconds, reporting `security_review.processing_status.processing_progress_percent`, until `job_status` is `COMPLETED` or `FAILED`. After 15 minutes, give the user the plan id and stop polling.
-3. Present `risk_score`, `summary`, `top_recommendations`, `policy_recommendations`, `attack_scenarios` and the threats, then revise the plan to address them.
+3. Present `risk_score`, `summary`, `top_recommendations`, `policy_recommendations`, `attack_scenarios` and `stride_threats`, then revise the plan to address them.
 
 ## 4. PR security review: on request
 

@@ -20,7 +20,7 @@ With the plugin hooks, a small security map arrives at session start and a secur
 - For files you will change that have no card yet, and for directories, call `get_developer_security_files` with `context_id` and 1–10 `paths` after reading them.
 - Fetch full text with `get_developer_security_details` only for items your change touches: card ids as `threat_ids`, `safeguard_ids`, `component_ids`, `design_attack_vector_ids`, and up to 5 map `guardrail_categories` for a category's full rules when you touch that area.
 - Threats are open code threats: fix those your change touches, using the suggested fix. Safeguards and component security controls are protections to keep and reuse. Design attack vectors are threats your change must not reopen.
-- Apply the relevant guardrails and name the titles that shaped your change. `connected: false` means the repository is not connected to Prime and the guardrails are account-wide: say so.
+- Apply the relevant guardrails and name the titles that shaped your change. `connected: false` means the repository is not connected to Prime, so there are no stored code findings for its files: say so. Guardrails still apply.
 - Report `unavailable_sources`, `truncated_sources` and `limitations`. This is stored analysis, not a scan of uncommitted code.
 
 Only when the developer explicitly confirms they mitigated specific threats, call `report_developer_security_context_outcome` with the `context_id` and those threat ids (or their `related_issue_ids`) from cards or details. It records a metric and does not close findings.

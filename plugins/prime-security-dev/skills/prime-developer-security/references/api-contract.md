@@ -25,7 +25,7 @@ All tools are on the Prime MCP server and act as the signed-in user. The plugin 
 
 Every security context response carries `unavailable_sources`, `truncated_sources` (more items exist than returned) and `limitations`.
 
-- Security map: `context_id`, `connected` (false when the repository is not connected to Prime; guardrails are then account-wide), `modules[] {id, name}`, `threat_counts[] {severity, count}` of open code threats, `hotspots[] {path, findings_count}`, `guardrails[] {category, total, titles[]}`.
+- Security map: `context_id`, `connected` (false when the repository is not connected to Prime: no stored code findings; guardrails still apply), `modules[] {id, name}`, `threat_counts[] {severity, count}` of open code threats, `hotspots[] {path, findings_count}`, `guardrails[] {category, total, titles[]}`.
 - File cards: `cards[]` with `path`, and for each kind a list plus its `*_total`:
   - `threats[]`: `{id, related_issue_ids, title, type, severity, locations[], suggested_fix}`
   - `safeguards[]`: `{id, title, assessment, locations[]}`

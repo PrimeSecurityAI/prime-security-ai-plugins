@@ -248,7 +248,7 @@ def source_notes(data):
 def map_text(repo, data):
     head = ['Prime security map for %s/%s (context_id %s).' % (repo['organization'], repo['repository'], data['context_id']), UNTRUSTED]
     if not data['connected']:
-        head.append('Repository not connected to Prime: only account-wide guardrails apply.')
+        head.append('Repository not connected to Prime: no stored code findings; guardrails still apply.')
     body = source_notes(data)
     if data['threat_counts']:
         body.append('Open threats: ' + ', '.join('%s %s' % (item['severity'], item['count']) for item in data['threat_counts']))

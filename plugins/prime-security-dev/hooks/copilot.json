@@ -4,7 +4,15 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "root=\"${PLUGIN_ROOT:-${COPILOT_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?}}}\"; python3 \"$root/skills/prime-developer-security/scripts/prime_hooks.py\" reminder --format copilot",
+        "bash": "root=\"${PLUGIN_ROOT:-${COPILOT_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?}}}\"; python3 -I \"$root/skills/prime-developer-security/scripts/prime_hooks.py\" session --format copilot",
+        "timeoutSec": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "matcher": "view|edit|create",
+        "bash": "root=\"${PLUGIN_ROOT:-${COPILOT_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:?}}}\"; python3 -I \"$root/skills/prime-developer-security/scripts/prime_hooks.py\" file --format copilot",
         "timeoutSec": 5
       }
     ]

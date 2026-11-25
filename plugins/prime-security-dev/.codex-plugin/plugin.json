@@ -1,6 +1,6 @@
 {
   "name": "prime-security-dev",
-  "version": "1.5.0-alpha.4",
+  "version": "1.5.0-alpha.5",
   "description": "Prime Security guardrails, security context, plan reviews and PR reviews for coding agents, with session reminders",
   "author": {"name": "Prime Security"},
   "skills": "./skills/",

@@ -4,40 +4,41 @@ Bring Prime Security into coding agents in **Claude Code, Codex, GitHub Copilot,
 
 | Feature | When | MCP tools |
 |---|---|---|
-| Guardrails | Before coding | `get_developer_guardrails` |
-| Security context | Before coding | `get_developer_security_context`, `report_developer_security_context_outcome` |
+| Security map | Session start (hook) or once | `get_developer_security_map` |
+| File security cards | Each file read or edited (hook), or before changing it | `get_developer_security_files` |
+| Details and guardrail rules | For items the change touches | `get_developer_security_details`, `report_developer_security_context_outcome` |
 | Security plan review | On request | `create_developer_security_plan`, `get_developer_security_plan` |
 | PR security review | On request | `start_developer_pr_review`, `get_developer_pr_review` |
 
-Prime resolves the modules covering the files the agent will change and returns only their guardrails and context. Version `1.5.0-alpha.4` is an unpublished alpha.
+Plugin hooks push the map and cards automatically and keep them small; the MCP tools are the fallback and give the full text. Version `1.5.0-alpha.5` is an unpublished alpha.
 
-This is policy guidance, not a sandbox or compliance certification. Optional client integrations add lifecycle reminders; they do not prove policies were applied. No edit telemetry is collected.
+This is policy guidance, not a sandbox or compliance certification. Hooks and reminders are advisory; they do not prove policies were applied. No edit telemetry is collected.
 
 ## Requirements
 
 - A Prime Security account with developer security enabled.
 - HTTPS access to the Prime API and a browser for the MCP login.
 - Git, so the agent can read the repository's `origin` remote.
-- `python3` for the Claude Code, Codex, Copilot and Cursor reminder hooks.
+- `python3` 3.9+ for the Claude Code, Codex, Copilot and Cursor hooks, plus a Prime token for them (see [setup](skills/prime-developer-security/references/setup.md#security-context-hooks)).
 - Node.js 22.20+ and `npx` when using the Skills CLI.
 - Start with macOS/Linux for the optional adapters. Windows host integration has not been validated.
 
 ## Plugin or skill?
 
-Install the **plugin** for your client. It contains the skill, the Prime MCP server connection, and a reminder that the client injects so the agent loads guardrails before changing code without being asked.
+Install the **plugin** for your client. It contains the skill, the Prime MCP server connection, and hooks that push the security map and per-file security cards into the agent's context without being asked.
 
 The **skill alone** does not run automatically and does not connect the MCP server. Use it only for clients without a plugin, such as Copilot agent mode in IDEs.
 
-| Client | Plugin reminder | MCP server | Skill only |
+| Client | Plugin hooks | MCP server | Skill only |
 |---|---|---|---|
-| Claude Code | Session start, resume, compaction | Plugin | Yes |
-| Codex | Session start, resume, compaction | Plugin | Yes |
-| GitHub Copilot CLI | Session start and resume | Plugin | Yes (also IDE agent mode) |
-| Cursor | Session start | Plugin | Yes |
+| Claude Code | Map at session start, resume, compaction; cards on Read, Edit, Write | Plugin | Yes |
+| Codex | Map at session start, resume, compaction; cards on `apply_patch` | Plugin | Yes |
+| GitHub Copilot CLI | Map at session start and resume; cards on view, edit, create | Plugin | Yes (also IDE agent mode) |
+| Cursor | Map at session start; cards on Read, Write | Plugin | Yes |
 | OpenCode 2.x | Every model request | Manual | Yes |
 | Pi | Every agent run | MCP extension | Yes |
 
-Reminders make no API requests; hook commands time out after five seconds. Ordinary user prompts do not add transcript reminders.
+Hooks send only the repository identity and relative paths, spend at most three seconds on the network and time out after five; each file gets one card per session. Without a hook token or on any failure, the session hook adds a static reminder and file hooks add nothing. The OpenCode and Pi reminders make no API requests.
 
 Install the plugin **or** the skill for a given client, not both; both together duplicate the skill.
 
@@ -59,7 +60,7 @@ codex plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
 codex plugin add prime-security-dev@prime
 ```
 
-Start a new session and review/trust the plugin hooks through the client's hook trust flow. Installing a plugin does not automatically trust its hooks. The Codex manifest selects `hooks/codex.json`.
+Start a new session and trust the plugin hooks with `/hooks`. Installing a plugin does not automatically trust its hooks. The Codex manifest selects `hooks/codex.json`.
 
 ### GitHub Copilot CLI
 
@@ -68,11 +69,11 @@ copilot plugin marketplace add PrimeSecurityAI/prime-security-ai-plugins
 copilot plugin install prime-security-dev@prime
 ```
 
-Copilot reads `.github/plugin/plugin.json`, which registers the skill, `hooks/copilot.json` and the MCP server. Copilot has no post-compaction hook event, so after a long session invoke the skill again if guardrails were compacted away.
+Copilot reads `.github/plugin/plugin.json`, which registers the skill, `hooks/copilot.json` and the MCP server. Copilot has no post-compaction hook event, so after a long session invoke the skill again if the security map was compacted away.
 
 ### Cursor
 
-The plugin bundles the skill, the MCP server and a session-start reminder from `hooks/cursor.json`. Install it as described in [Cursor Plugin](../../README.md#cursor-plugin).
+The plugin bundles the skill, the MCP server and the hooks from `hooks/cursor.json`. Install it as described in [Cursor Plugin](../../README.md#cursor-plugin).
 
 ### OpenCode
 
@@ -109,7 +110,7 @@ Without `--agent`, the Skills CLI detects installed clients and asks which to us
 
 ## Connect and log in
 
-Follow [setup](skills/prime-developer-security/references/setup.md). Each client logs in to the MCP server through the browser once; no PAT is needed. Only the Claude Code plugin reads `PRIME_API_URL` for a custom origin.
+Follow [setup](skills/prime-developer-security/references/setup.md). Each client logs in to the MCP server through the browser once; the plugin hooks additionally read a Prime token. Only the Claude Code plugin reads `PRIME_API_URL` for a custom origin.
 
 ## Use it
 
@@ -128,10 +129,10 @@ Ask for the other features in plain words, for example "security-review this pla
 ## Data and limitations
 
 - Tools send repository identity and relative paths; source files are not uploaded. A plan review uploads the plan Markdown and creates a Prime security design review.
-- Guardrails and context enter the agent's context and are subject to your AI provider's data handling.
+- The security map, cards and details enter the agent's context and are subject to your AI provider's data handling.
 - Security context is stored analysis; it does not verify uncommitted code.
 - Mitigation reports record only developer-confirmed issue ids and do not close findings.
-- Reminders are advisory; there is no "loaded" marker that could falsely certify success.
+- Hooks and reminders are advisory; there is no "loaded" marker that could falsely certify success.
 
 ## Update and remove
 

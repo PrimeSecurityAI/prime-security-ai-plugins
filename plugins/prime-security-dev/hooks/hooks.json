@@ -5,7 +5,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/skills/prime-developer-security/scripts/prime_hooks.py\" reminder",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/skills/prime-developer-security/scripts/prime_hooks.py\" session",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/skills/prime-developer-security/scripts/prime_hooks.py\" file",
             "timeout": 5
           }
         ]

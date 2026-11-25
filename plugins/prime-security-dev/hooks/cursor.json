@@ -2,7 +2,14 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "python3 ./skills/prime-developer-security/scripts/prime_hooks.py reminder",
+        "command": "python3 -I ./skills/prime-developer-security/scripts/prime_hooks.py session",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 -I ./skills/prime-developer-security/scripts/prime_hooks.py file",
+        "matcher": "Read|Write",
         "timeout": 5
       }
     ]

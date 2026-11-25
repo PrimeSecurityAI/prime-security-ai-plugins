@@ -30,7 +30,7 @@ A **skill** is instructions the agent loads when it decides the skill is relevan
 |---|---|---|
 | `prime` or `prime-developer-security` skill | Included | Included |
 | Prime MCP server | Connected | Configure it yourself; see [MCP Server](#mcp-server) |
-| Session reminder (dev) | Injected by the client | None: the agent uses the skill only when it chooses to or you invoke it |
+| Security context hooks (dev) | Run by the client | None: the agent uses the skill only when it chooses to or you invoke it |
 | Updates | The client's plugin manager | `npx skills update` |
 | Clients | Operator: Claude Code, Codex, GitHub Copilot CLI, Cursor. Dev: also OpenCode and Pi | Any Agent Skills client |
 
@@ -196,7 +196,7 @@ Prime exposes a remote MCP server over Streamable HTTP at `https://api.primesec.
 | `get_repositories`, `get_repository_by_id`, `get_repository_code_issues` | Code repositories and their findings |
 | `get_posture_metrics` | Security posture metrics |
 | `get_all_products` | Products |
-| `get_developer_guardrails`, `get_developer_security_context`, `create_developer_security_plan`, `start_developer_pr_review` and their follow-ups | Developer security, used by the `prime-developer-security` skill |
+| `get_developer_security_map`, `get_developer_security_files`, `get_developer_security_details`, `create_developer_security_plan`, `start_developer_pr_review` and their follow-ups | Developer security, used by the `prime-developer-security` skill |
 | `start_prime_ai_conversation`, `ask_prime_ai`, `get_prime_ai_answer` | Ask Prime's security AI a free-form question, then poll `get_prime_ai_answer` until the answer is complete |
 | `search_prime_operations`, `call_prime_operation` | Find and run any other Prime API operation |
 
@@ -320,7 +320,7 @@ The recommended installation of the cross-client Prime API skill for Claude Code
 
 ### prime-security-dev
 
-The proposed unpublished `1.5.0-alpha.4` gives coding agents the organization's guardrails and security context before coding, and Prime security reviews of plans and pull requests on request, through the Prime MCP server's developer tools. It includes reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
+The proposed unpublished `1.5.0-alpha.5` pushes a small security map at session start and a security card for each file the agent reads or edits, with guardrails and deeper context through the Prime MCP server's developer tools, and Prime security reviews of plans and pull requests on request. It includes hooks or reminder adapters for Claude Code, Codex, GitHub Copilot CLI, Cursor, OpenCode, and Pi. Install separately from the operator skill; see the [installation and support guide](plugins/prime-security-dev/README.md).
 
 ## Structure
 

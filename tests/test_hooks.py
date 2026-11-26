@@ -26,10 +26,11 @@ def security_map(size=1):
 
 
 def card(path, size=1):
-    return {'path': path, 'threats_total': size + 1, 'safeguards_total': 0, 'components_total': 0, 'design_attack_vectors_total': 0,
+    return {'path': path, 'threats_total': size + 1, 'safeguards_total': 0, 'components_total': 1, 'design_attack_vectors_total': 1,
             'threats': [{'id': 7, 'related_issue_ids': [8], 'title': 'SQL injection ' * size, 'type': 'CODE_THREAT', 'severity': 'HIGH',
                          'locations': [path + ':12'], 'suggested_fix': 'Use bound parameters'}] * size,
-            'safeguards': [], 'components': [], 'design_attack_vectors': []}
+            'safeguards': [], 'components': [{'external_id': 'c1', 'name': 'Checkout API', 'role': 'api', 'security_controls': ['session auth']}],
+            'design_attack_vectors': [{'id': 'v1', 'name': 'Order tampering', 'component_id': 'c1'}]}
 
 
 class FakePrime(BaseHTTPRequestHandler):
@@ -144,12 +145,14 @@ class HookTests(unittest.TestCase):
         session = {'hook_event_name': 'SessionStart', 'session_id': 's', 'cwd': str(self.repo)}
         self.invoke(session, 'session')
         read = {**session, 'hook_event_name': 'PostToolUse', 'tool_name': 'Read', 'tool_input': {'file_path': str(self.repo / 'a.py')}}
-        self.assertIn('a.py', self.invoke(read, 'file')['hookSpecificOutput']['additionalContext'])
+        self.assertIn('component c1 Checkout API', self.invoke(read, 'file')['hookSpecificOutput']['additionalContext'])
         self.assertEqual(self.invoke(read, 'file'), {})
+        other = {**read, 'tool_input': {'file_path': str(self.repo / 'b.py')}}
+        self.assertIn('Part of (shown earlier): Checkout API', self.invoke(other, 'file')['hookSpecificOutput']['additionalContext'])
         outside = {**read, 'tool_input': {'file_path': str(self.home / 'other.py')}}
         self.assertEqual(self.invoke(outside, 'file'), {})
         self.assertEqual([request[0] for request in self.server.requests],
-                         ['/dev/security-context', '/dev/security-context/%s/files' % CONTEXT_ID])
+                         ['/dev/security-context'] + ['/dev/security-context/%s/files' % CONTEXT_ID] * 2)
 
     def test_unapproved_origin_or_missing_token_falls_back_without_requests(self):
         session = {'hook_event_name': 'SessionStart', 'session_id': 's', 'cwd': str(self.repo)}

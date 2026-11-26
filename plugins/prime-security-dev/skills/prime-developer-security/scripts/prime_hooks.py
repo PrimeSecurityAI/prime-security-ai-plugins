@@ -268,7 +268,7 @@ def shown(name, items, total):
     return ['%s (%d of %d):' % (name, len(items), total)] if items else []
 
 
-def card_lines(card):
+def card_lines(card, seen):
     lines = ['File %s' % card['path']]
     lines += shown('Threats', card['threats'], card['threats_total'])
     for item in card['threats']:
@@ -281,26 +281,32 @@ def card_lines(card):
     lines += shown('Safeguards', card['safeguards'], card['safeguards_total'])
     lines += ['safeguard %s %s: %s at %s' % (item['id'], item['assessment'], item['title'], ', '.join(item['locations']))
               for item in card['safeguards']]
-    lines += shown('Components', card['components'], card['components_total'])
+    new = [item for item in card['components'] if item['external_id'] not in seen]
+    earlier = [item['name'] for item in card['components'] if item['external_id'] in seen]
+    lines += shown('Components', new, card['components_total'] - len(earlier))
     lines += ['component %s %s (%s); controls: %s' % (item['external_id'], item['name'], item['role'], ', '.join(item['security_controls']))
-              for item in card['components']]
-    lines += shown('Design attack vectors', card['design_attack_vectors'], card['design_attack_vectors_total'])
+              for item in new]
+    if earlier:
+        lines.append('Part of (shown earlier): ' + ', '.join(earlier))
+    vectors = [item for item in card['design_attack_vectors'] if item['component_id'] not in seen]
+    lines += shown('Design attack vectors', vectors, card['design_attack_vectors_total'] - len(card['design_attack_vectors']) + len(vectors))
     lines += ['design_attack_vector %s: %s (component %s)' % (item['id'], item['name'], item['component_id'])
-              for item in card['design_attack_vectors']]
+              for item in vectors]
+    seen.update(item['external_id'] for item in new)
     return lines
 
 
-def files_text(context_id, data):
+def files_text(context_id, data, seen):
     body = source_notes(data)
     for card in data['cards']:
-        body += card_lines(card)
+        body += card_lines(card, seen)
     return fit(['Prime security cards (context_id %s).' % context_id, UNTRUSTED], body, [DETAILS], FILE_CHARS)
 
 
 def session(hook):
     _, repo = repository(hook.cwd)
     security_map = open_context(Prime(), repo)
-    save_state(hook, {'context_id': security_map['context_id'], 'repository': repo, 'carded': []})
+    save_state(hook, {'context_id': security_map['context_id'], 'repository': repo, 'carded': [], 'components': []})
     return map_text(repo, security_map)
 
 
@@ -315,12 +321,15 @@ def file(hook):
     prime = Prime()
     context_id = state['context_id'] if state else open_context(prime, repo)['context_id']
     response = prime.post('/dev/security-context/%s/files' % context_id, {'paths': paths})
+    seen = set(state.get('components', [])) if state else set()
+    text = files_text(context_id, response, seen) if response['cards'] else None
     latest = load_state(hook)
     if not latest or latest['repository'] != repo:
-        latest = {'context_id': context_id, 'repository': repo, 'carded': []}
+        latest = {'context_id': context_id, 'repository': repo, 'carded': [], 'components': []}
     latest['carded'] = list(dict.fromkeys(latest['carded'] + paths))
+    latest['components'] = list(dict.fromkeys(latest.get('components', []) + sorted(seen)))
     save_state(hook, latest)
-    return files_text(context_id, response) if response['cards'] else None
+    return text
 
 
 def main(args):

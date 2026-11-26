@@ -1,5 +1,5 @@
 // OpenCode 2.x server plugin (@opencode/cli). No runtime dependencies; `Plugin.define` is an identity helper.
-const reminder = 'Use the prime-code-guardrails skill before changing code. Load policies once for an independent coding task; follow-up messages in that task reuse the full policy context. Reload after repository, account, or API origin changes, or when compaction loses policy text. This reminder does not mean policies have been loaded.';
+const reminder = 'Use the prime-developer-security skill before meaningful coding actions: call the Prime MCP tools get_developer_security_map once, get_developer_security_files for the files you will change, and get_developer_security_details for the items your change touches. Use create_developer_security_plan and start_developer_pr_review only when requested. If the tools are unavailable or disabled, tell the user and continue ordinary coding.';
 
 export default {
   id: 'prime-security-dev',

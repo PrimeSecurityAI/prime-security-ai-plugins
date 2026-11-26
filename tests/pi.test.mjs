@@ -16,15 +16,15 @@ async function startRun(skills, sections = {}) {
 }
 
 test('Pi adds a guardrails section when the skill is loaded', async () => {
-  const { event, result } = await startRun([{ name: 'prime-code-guardrails' }], { existing: 'kept' });
+  const { event, result } = await startRun([{ name: 'prime-developer-security' }], { existing: 'kept' });
   assert.equal(result, undefined); // mutate sections; never replace the whole prompt
   assert.equal(event.systemPromptOptions.sections.existing, 'kept');
-  assert.match(event.systemPromptOptions.sections.prime_guardrails, /prime-code-guardrails/);
+  assert.match(event.systemPromptOptions.sections.prime_developer_security, /prime-developer-security/);
 });
 
 test('Pi omits the section when the skill is unavailable', async () => {
-  const { event } = await startRun([], { prime_guardrails: 'stale' });
-  assert.equal('prime_guardrails' in event.systemPromptOptions.sections, false);
+  const { event } = await startRun([], { prime_developer_security: 'stale' });
+  assert.equal('prime_developer_security' in event.systemPromptOptions.sections, false);
 });
 
 test('Pi package points at the extension and the guardrails skill', async () => {
@@ -37,13 +37,13 @@ test('Pi package points at the extension and the guardrails skill', async () => 
     skills: ['./plugins/prime-security-dev/skills'],
   });
   assert.equal(manifest.dependencies, undefined); // Pi supplies its own packages
-  await readFile(new URL('plugins/prime-security-dev/skills/prime-code-guardrails/SKILL.md', repo));
+  await readFile(new URL('plugins/prime-security-dev/skills/prime-developer-security/SKILL.md', repo));
 });
 
 test('Pi reminder matches the shared hook reminder', async () => {
   const [source, script] = await Promise.all([
     readFile(extension, 'utf8'),
-    readFile(new URL('plugins/prime-security-dev/skills/prime-code-guardrails/scripts/prime_hooks.py', repo), 'utf8'),
+    readFile(new URL('plugins/prime-security-dev/skills/prime-developer-security/scripts/prime_hooks.py', repo), 'utf8'),
   ]);
   const pythonReminder = script.match(/REMINDER = \(([\s\S]*?)\)\n/)[1].match(/'([^']*)'/g).map((part) => part.slice(1, -1)).join('');
   assert.ok(source.includes(`'${pythonReminder}'`));
